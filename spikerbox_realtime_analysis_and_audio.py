@@ -244,5 +244,3 @@ except KeyboardInterrupt:
         print(min(all_frequencies), max(all_frequencies))
     else:
         print("all_frequencies list is empty! Game mode on?")
-
-

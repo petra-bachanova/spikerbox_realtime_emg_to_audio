@@ -2,7 +2,7 @@ from scipy.io import wavfile
 import numpy as np
 import os
 
-from utils.config import Config
+from app.utils.config import Config
 
 
 def read_wav_file(config: Config) -> tuple:

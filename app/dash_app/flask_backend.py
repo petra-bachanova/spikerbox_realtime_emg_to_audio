@@ -3,9 +3,17 @@ import socketio
 import time
 import math
 import random
-import sys
 
-import app.main
+import sys
+import os
+
+# Add the project root to sys.path
+app_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+if app_root not in sys.path:
+    sys.path.insert(0, app_root)
+
+from app.main import start_main_from_backend
+
 
 # Create a Socket.IO client
 sio = socketio.Client(logger=False, engineio_logger=False)
@@ -56,7 +64,7 @@ def streaming_state(data):
 
 def send_data():
     global connected, streaming_enabled
-    
+
     while connected:
         # Only send data if streaming is enabled
         if streaming_enabled:
@@ -70,10 +78,13 @@ def send_data():
             except Exception as e:
                 print(f"Error sending data: {e}")
             """
+            start_main_from_backend(sio=sio)
 
-        
+        """
         # Wait before sending next update (100ms = 0.1 seconds)
         time.sleep(0.1)
+        """
+
 
 def connect_with_retry(url, max_retries=5, retry_delay=2):
     """Attempt to connect to the server with retries"""

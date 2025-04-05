@@ -57,19 +57,26 @@ def get_signal_frame(
     return frame
 
 
-def emit_data(sio: socketio.Client, data: np.array, sample_rate: int):
+def emit_data(
+        sio: socketio.Client,
+        frame_data: np.array,
+        sample_rate: int,
+        rms_amplitude: int
+        ):
 
     global start_time
     current_time = time.time() - start_time
 
-    time_list = current_time + np.array(range(len(data)))/(sample_rate)
+    time_list = current_time + np.array(range(len(frame_data)))/(sample_rate)
 
-    data = data[1::3]
+    frame_data = frame_data[1::3]
     time_list = time_list[1::3]
 
     data_dict = {
-        "frame": data.tolist(),
-        "time": time_list.tolist()
+        "frame": frame_data.tolist(),
+        "frame_time": time_list.tolist(),
+        "rms_amplitude": rms_amplitude,
+        "rms_sample_time": current_time,
     }
 
     try:
@@ -183,7 +190,12 @@ def main(
         # emit data if running via backend server
         if from_backend and (i % stft_frame_length == 0):
             # i % stft_frame_length == 0 ensures we are not duplicating data in graph
-            emit_data(sio=sio, data=frame, sample_rate=sample_rate)
+            emit_data(
+                sio=sio,
+                frame_data=frame,
+                sample_rate=sample_rate,
+                rms_amplitude=rms_amplitude
+                )
 
         time.sleep(0.2)
         # print(f"hop: {hop_time}")

@@ -1,13 +1,19 @@
 import numpy as np
 import scipy
 import os
+import sys
 import socketio
+
+# Add the project root to sys.path
+app_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+if app_root not in sys.path:
+    sys.path.insert(0, app_root)
 
 from app.utils.config import Config
 import app.data_reading.spikerbox_data as spikerbox_data_reader
 import app.data_reading.wav_data as wav_data_reader
 import app.plot_data
-import app.process_data
+import app.process_data as process_data
 import app.save_data
 import time
 
@@ -115,6 +121,11 @@ def main(
             )
 
         # process data - apply filters and Fourier Transforms
+        notch_frequencies = [60, 120, 180, 240, 300, 360, 420]
+        filtered_frame = process_data.apply_notch_filters(
+            signal_in=frame,
+            notch_frequencies=notch_frequencies
+            )
         # TODO
 
         # plot data (if stated in config)

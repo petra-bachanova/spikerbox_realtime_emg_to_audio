@@ -11,3 +11,4 @@ eventlet
 dash-extensions
 plotly
 python-socketio
+dash-daq

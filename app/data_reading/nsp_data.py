@@ -1,14 +1,26 @@
 import serial
 import numpy as np
+import musicpy
 
-def read_raw_nsp_data(com_port, baud_rate):
-    ser = serial.Serial(com_port, int(baud_rate))
-    inputBufferSize = 4000  # 20000 = 1 second
-    ser.timeout = inputBufferSize/20000.0  # set read timeout
+global_ser = None
 
-    data_ = ser.read(inputBufferSize)
+def initialize_serial(com_port, baud_rate):
+    global global_ser
+    if global_ser is None or not global_ser.is_open:
+        global_ser = serial.Serial(com_port, int(baud_rate))
+        global_ser.timeout = 0.2
+
+
+def read_raw_nsp_data(flush_buffer=False):
+    global global_ser
+    
+    if flush_buffer:
+        global_ser.reset_input_buffer()  # Clear any backlog
+    
+    inputBufferSize = 4000
+    data_ = global_ser.read(inputBufferSize)
     out = [(int(data_[i])) for i in range(0, len(data_))]
-
+    
     return out
 
 

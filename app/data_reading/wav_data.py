@@ -16,13 +16,13 @@ def read_wav_file(config: Config) -> tuple:
     return sample_rate, data
 
 
-def extract_window(signal, sample_rate, i, frame_length):
+def extract_window(wav_signal, sample_rate, i, frame_length):
     """
     TODO - docstring
     """
 
     # slice the frame
-    frame = signal[i: i + frame_length]
+    frame = wav_signal[i: i + frame_length]
 
     # check if length of frame is as expected
     # if not, we have reached the end of the signal

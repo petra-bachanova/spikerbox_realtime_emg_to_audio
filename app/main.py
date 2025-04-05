@@ -1,8 +1,11 @@
 import numpy as np
 import scipy
 import os
+import musicpy
+from musicpy import degree_to_note, play
 import sys
 import socketio
+from scipy import signal
 
 
 # Add the project root to sys.path
@@ -18,13 +21,16 @@ import app.process_data as process_data
 import app.save_data
 import time
 
-
+global calibrate_mode
+calibrate_mode = False
+resting_amplitude = 6
+max_amplitude = 70
 
 def get_signal_frame(
         config: Config,
         i: int,
         stft_frame_length: int,
-        signal: list,
+        wav_signal: list,
         sample_rate: int,
         ):
     """
@@ -33,15 +39,12 @@ def get_signal_frame(
 
     if config.use_live_data:
         # read spikerbox data
-        com_port = config.com_port
-        baud_rate = config.baud_rate
-        serial_bytes = nsp_reader.read_raw_nsp_data(com_port=com_port, baud_rate=baud_rate)
+        serial_bytes = nsp_reader.read_raw_nsp_data()
         frame = nsp_reader.process_data(serial_bytes)
-
     else:
         try:
             frame = wav_data_reader.extract_window(
-                signal=signal,
+                wav_signal=wav_signal,
                 sample_rate=sample_rate,
                 i=i,
                 frame_length=stft_frame_length
@@ -84,17 +87,21 @@ def main(
     TODO - docstring
     """
 
+    global calibrate_mode
     global start_time
     start_time = time.time()
 
     if not config.use_live_data:
         # sample_rate: samples per second
         # data: numpy array
-        sample_rate, signal = wav_data_reader.read_wav_file(config)
+        sample_rate, wav_signal = wav_data_reader.read_wav_file(config)
         signal_min = signal.min()
         signal_max = signal.max()
     else:
         sample_rate = 10000
+        com_port = config.com_port
+        baud_rate = config.baud_rate
+        nsp_reader.initialize_serial(com_port=com_port, baud_rate=baud_rate)
 
     # stft = Short-Time Fourier Transform. See https://brianmcfee.net/dstbook-site/content/ch09-stft/STFT.html for docs
     # TODO - define appropriate frame length
@@ -107,7 +114,6 @@ def main(
     i = 0  # initialise loop iteration
 
     while True:
-
         # print(f"i = {i}")
 
         if i < stft_frame_length:
@@ -116,26 +122,62 @@ def main(
             continue
 
         if config.use_live_data:
-            signal = None
+            wav_signal = None
 
         frame = get_signal_frame(
             config=config,
             i=i,
             stft_frame_length=stft_frame_length,
-            stft_hop_length=stft_hop_length,
-            signal=signal,
+            wav_signal=wav_signal,
             sample_rate=sample_rate
             )
 
-        # process data - apply filters and Fourier Transforms
+        # Notch filtering
         notch_frequencies = [60, 120, 180, 240, 300, 360, 420]
         filtered_frame = process_data.apply_notch_filters(
             signal_in=frame,
             notch_frequencies=notch_frequencies
             )
-        # TODO
 
-        # plot data (if stated in config)
+        # Band pass filtering
+        b, a = signal.butter(4, [20, 450], 'bandpass', fs=sample_rate)
+        filtered_emg = signal.filtfilt(b, a, filtered_frame)
+        # Get power within the band pass filter
+        rms_amplitude = np.sqrt(np.mean(filtered_emg**2))
+        print(rms_amplitude)
+
+        if not calibrate_mode:
+            normalized_amplitude = (rms_amplitude - resting_amplitude) / (max_amplitude - resting_amplitude)
+            normalized_amplitude = np.clip(normalized_amplitude, 0, 1)
+            
+            if normalized_amplitude > 0.05:
+                # Map to MIDI note range (e.g., C3 to C6)
+                min_note = 48  # C3
+                max_note = 84  # C6
+                midi_number = min_note + int(normalized_amplitude * (max_note - min_note))
+            
+                def midi_to_musicpy_note(midi_number, duration=0.5):
+                    """
+                    Convert MIDI note number to musicpy note() format and play it
+                    Parameters:
+                    midi_number: int - MIDI note number (e.g., 60 for middle C)
+                    duration: float - note duration in seconds
+                    """
+                    note_with_octave = str(musicpy.degree_to_note(midi_number))
+                    note_name = note_with_octave[0]
+                    # Handle sharps/flats (which would make the note name 2 characters)
+                    if len(note_with_octave) > 2 and note_with_octave[1] in ['#', 'b']:
+                        note_name = note_with_octave[:2]
+                        octave = int(note_with_octave[2:])
+                    else:
+                        octave = int(note_with_octave[1:])
+                    
+                    # Create and play the musicpy note
+                    return musicpy.note(note_name, octave, duration)
+
+
+                note_obj = midi_to_musicpy_note(midi_number, 0.5)
+                musicpy.play(note_obj)
 
 
         # emit data if running via backend server
@@ -143,7 +185,8 @@ def main(
             # i % stft_frame_length == 0 ensures we are not duplicating data in graph
             emit_data(sio=sio, data=frame, sample_rate=sample_rate)
 
-        time.sleep(hop_time)  # maybe 0.2 s
+        time.sleep(0.2)
+        # print(f"hop: {hop_time}")
         i += stft_hop_length
 
 

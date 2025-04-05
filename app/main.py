@@ -24,7 +24,6 @@ def get_signal_frame(
         config: Config,
         i: int,
         stft_frame_length: int,
-        stft_hop_length: int,
         signal: list,
         sample_rate: int,
         ):
@@ -37,13 +36,8 @@ def get_signal_frame(
         com_port = config.com_port
         baud_rate = config.baud_rate
         serial_bytes = nsp_reader.read_raw_nsp_data(com_port=com_port, baud_rate=baud_rate)
-        processed_samples = nsp_reader.process_data(serial_bytes)
+        frame = nsp_reader.process_data(serial_bytes)
 
-        print(len(serial_bytes))
-        print(len(processed_samples))
-
-        
-        pass
     else:
         try:
             frame = wav_data_reader.extract_window(
@@ -105,10 +99,9 @@ def main(
     # stft = Short-Time Fourier Transform. See https://brianmcfee.net/dstbook-site/content/ch09-stft/STFT.html for docs
     # TODO - define appropriate frame length
     # TODO - place frame length in config.ini or calculate appropriate length
-    stft_frame_length = 500  # samples
-    stft_hop_length = 250  # samples
+    stft_frame_length = 2000  # samples
+    stft_hop_length = 1000  # samples
     hops_per_frame = stft_frame_length / stft_hop_length
-
     hop_time = stft_hop_length / sample_rate  # time between hops in seconds
 
     i = 0  # initialise loop iteration
@@ -150,7 +143,7 @@ def main(
             # i % stft_frame_length == 0 ensures we are not duplicating data in graph
             emit_data(sio=sio, data=frame, sample_rate=sample_rate)
 
-        time.sleep(hop_time)
+        time.sleep(hop_time)  # maybe 0.2 s
         i += stft_hop_length
 
 

@@ -3,13 +3,21 @@ import scipy
 import os
 import socketio
 
+import sys
+
+# Add the project root to sys.path
+app_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+if app_root not in sys.path:
+    sys.path.insert(0, app_root)
+
 from app.utils.config import Config
-import app.data_reading.spikerbox_data as spikerbox_data_reader
+import app.data_reading.nsp_data as nsp_reader
 import app.data_reading.wav_data as wav_data_reader
 import app.plot_data
 import app.process_data
 import app.save_data
 import time
+
 
 
 def get_signal_frame(
@@ -26,8 +34,15 @@ def get_signal_frame(
 
     if config.use_live_data:
         # read spikerbox data
-        # TODO - get frame
-        # frame = []
+        com_port = config.com_port
+        baud_rate = config.baud_rate
+        serial_bytes = nsp_reader.read_raw_nsp_data(com_port=com_port, baud_rate=baud_rate)
+        processed_samples = nsp_reader.process_data(serial_bytes)
+
+        print(len(serial_bytes))
+        print(len(processed_samples))
+
+        
         pass
     else:
         try:
@@ -84,6 +99,8 @@ def main(
         sample_rate, signal = wav_data_reader.read_wav_file(config)
         signal_min = signal.min()
         signal_max = signal.max()
+    else:
+        sample_rate = 10000
 
     # stft = Short-Time Fourier Transform. See https://brianmcfee.net/dstbook-site/content/ch09-stft/STFT.html for docs
     # TODO - define appropriate frame length
@@ -104,6 +121,9 @@ def main(
             # wait until we have enough samples for stft
             i += stft_hop_length
             continue
+
+        if config.use_live_data:
+            signal = None
 
         frame = get_signal_frame(
             config=config,

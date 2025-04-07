@@ -4,13 +4,8 @@ import time
 import math
 import random
 
-import sys
-import os
-
-# Add the project root to sys.path
-app_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
-if app_root not in sys.path:
-    sys.path.insert(0, app_root)
+# import sys
+# import os
 
 from app.main import start_main_from_backend
 

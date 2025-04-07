@@ -68,28 +68,13 @@ def send_data():
     while connected:
         # Only send data if streaming is enabled
         if streaming_enabled:
-            """
-            # Generate new data point
-            data_point = generate_data()
-            print(data_point)
-            # Send to the frontend
-            try:
-                sio.emit('data_update', data_point)
-            except Exception as e:
-                print(f"Error sending data: {e}")
-            """
             start_main_from_backend(sio=sio)
-
-        """
-        # Wait before sending next update (100ms = 0.1 seconds)
-        time.sleep(0.1)
-        """
 
 
 def connect_with_retry(url, max_retries=5, retry_delay=2):
     """Attempt to connect to the server with retries"""
     global connected
-    
+
     retries = 0
     while retries < max_retries:
         try:
@@ -107,10 +92,11 @@ def connect_with_retry(url, max_retries=5, retry_delay=2):
                 print("Make sure the frontend server is running first.")
                 return False
 
+
 if __name__ == "__main__":
     # Set initial start time for time-series data
     start_time = time.time()
-    
+
     try:
         # Connect to the frontend Socket.IO server with retry logic
         frontend_url = 'http://localhost:8501'

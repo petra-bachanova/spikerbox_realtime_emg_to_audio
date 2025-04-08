@@ -1,24 +1,14 @@
 import numpy as np
-import scipy
-import os
 import musicpy
 from musicpy import degree_to_note, play
 import sys
 import socketio
 from scipy import signal
 
-
-# Add the project root to sys.path
-app_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-if app_root not in sys.path:
-    sys.path.insert(0, app_root)
-
 from app.utils.config import Config
 import app.data_reading.nsp_data as nsp_reader
 import app.data_reading.wav_data as wav_data_reader
-import app.plot_data
 import app.process_data as process_data
-import app.save_data
 import time
 
 global calibrate_mode

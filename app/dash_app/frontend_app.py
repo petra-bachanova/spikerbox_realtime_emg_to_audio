@@ -6,7 +6,6 @@ from dash.dependencies import Input, Output, State
 import plotly.graph_objs as go
 from flask import Flask
 from flask_socketio import SocketIO
-import time
 from plotly.subplots import make_subplots
 
 # Setup Flask server with SocketIO

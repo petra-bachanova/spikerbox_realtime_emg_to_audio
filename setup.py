@@ -6,6 +6,7 @@ with open("requirements.txt") as f:
 setup(
     name="spikerbox_realtime_emg_to_audio",
     version="2.0",
+    python_requires='>=3.13',
     packages=find_packages(),
     install_requires=requirements,
     include_package_data=True,

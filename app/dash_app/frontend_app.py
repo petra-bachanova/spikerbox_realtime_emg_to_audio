@@ -113,7 +113,7 @@ app.layout = html.Div([
     # dcc.Graph(id='amplitude-plot', animate=False),
     dcc.Interval(
         id='frame-update',
-        interval=100,  # Update graph every x ms
+        interval=200,  # Update graph every x ms
         n_intervals=0
     ),
     # html.Div(id='test-frame-div'),
@@ -187,28 +187,6 @@ def toggle_calibrate_message_and_stats(calibrate_mode, current_stats):
             stats_message
         )
 
-# @app.callback(
-#     Output('calibrate-message', 'style'),
-#     [Input('calibrate-mode', 'value')]
-# )
-# def toggle_calibrate_message(calibrate_mode):
-#     if calibrate_mode:
-#         # Show the message if calibrate_mode is True
-#         return {
-#             'display': 'block',
-#             'backgroundColor': '#FFFF99',
-#             'color': 'black',
-#             'padding': '10px 20px',
-#             'fontSize': '18px',
-#             'borderRadius': '5px',
-#             'margin': '10px 0px',
-#             'textAlign': 'center',
-#             'border': '2px solid black'
-#         }
-#     else:
-#         # Hide the message if calibrate_mode is False
-#         return {'display': 'none'}
-
 # Callback to update the global variable based on the ToggleSwitch position
 @app.callback(
     Output('calibrate-mode', 'value'),
@@ -217,7 +195,6 @@ def toggle_calibrate_message_and_stats(calibrate_mode, current_stats):
 def update_calibrate_mode(toggle_value):
     global calibrate_mode
     calibrate_mode = toggle_value  # Update the global variable
-    print(f"Calibrate mode set to: {calibrate_mode}")
     return toggle_value
 
 # WebSocket event handler
@@ -262,16 +239,11 @@ def handle_signal_frame_data_update(data):
 @socketio.on('data_update')
 def handle_data_update(data):
     global times, values, streaming_active
-
-    print("handle_data_update")
-    print(streaming_active)
     
     # Only process incoming data if streaming is active
     if streaming_active:
         times.append(data['time'])
         values.append(data['value'])
-
-        print(times[-1])
         
         # Keep only the latest points
         if len(times) > max_points:
@@ -288,7 +260,6 @@ def send_streaming_state():
 )
 def clear_graphs_and_data(n_clicks):
     # global streaming_active
-    print("clearing data")
     global signal_frame
     global signal_frame_times
     signal_frame = []

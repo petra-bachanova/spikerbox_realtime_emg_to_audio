@@ -1,40 +1,49 @@
 import serial
 import numpy as np
-import musicpy
+from app.utils.config import Config
 
-global_ser = None
+ser = None
 
-def initialize_serial(com_port, baud_rate):
-    global global_ser
-    if global_ser is None or not global_ser.is_open:
-        global_ser = serial.Serial(com_port, int(baud_rate))
-        global_ser.timeout = 0.2
+
+def initialize_serial(config: Config, com_port: str, baud_rate: int):
+    """
+    Initializes the serial connection to the SpikerBox device.
+    """
+    global ser
+    if ser is None or not ser.is_open:
+        ser = serial.Serial(com_port, int(baud_rate))
+        # timeout == 0 for Non-blocking mode
+        # ser.read() will return immediately with whatever data is available
+        ser.timeout = 0
 
 
 def read_raw_nsp_data(flush_buffer=False):
-    global global_ser
-    
+    """
+    Reads raw data from the SpikerBox device over the serial connection
+    """
+    global ser
+
     if flush_buffer:
-        global_ser.reset_input_buffer()  # Clear any backlog
-    
+        ser.reset_input_buffer()  # Clear any backlog
+
     inputBufferSize = 4000
-    data_ = global_ser.read(inputBufferSize)
+    data_ = ser.read(inputBufferSize)
     out = [(int(data_[i])) for i in range(0, len(data_))]
-    
+
     return out
 
 
-def process_data(data_):
+def process_data(data):
     """
     Processes the raw data stream from SpikerBox by extracting 16-bit samples.
     Each sample is formed by combining two consecutive bytes, where the most significant bit of the first byte is
     cleared, and the second byte occupies the lower 7 bits of the resulting 16-bit sample.
 
-    :param data_: (list) Raw data received from the SpikerBox.
+    :param data: (list) Raw data received from the SpikerBox.
     :return: result: (numpy.ndarray) Array containing the processed 16-bit samples extracted from the raw data.
     """
 
-    data_in = np.array(data_)
+    data_in = np.array(data)
     result = []
     i = 1
 

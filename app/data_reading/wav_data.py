@@ -16,7 +16,7 @@ def read_wav_file(config: Config) -> tuple:
     return sample_rate, data
 
 
-def extract_window(wav_signal, sample_rate, i, frame_length):
+def extract_window(wav_signal, i, frame_length):
     """
     TODO - docstring
     """

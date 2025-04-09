@@ -4,9 +4,6 @@ import time
 import math
 import random
 
-# import sys
-# import os
-
 from app.main import start_main_from_backend
 
 

@@ -1,7 +1,6 @@
 import numpy as np
 import musicpy
 from musicpy import degree_to_note, play
-import sys
 import socketio
 from scipy import signal
 
@@ -13,8 +12,10 @@ import time
 
 global calibrate_mode
 calibrate_mode = False
+
 resting_amplitude = 6
 max_amplitude = 70
+
 
 def get_signal_frame(
         config: Config,
@@ -35,7 +36,6 @@ def get_signal_frame(
         try:
             frame = wav_data_reader.extract_window(
                 wav_signal=wav_signal,
-                sample_rate=sample_rate,
                 i=i,
                 frame_length=stft_frame_length
                 )
@@ -86,40 +86,37 @@ def main(
 
     global calibrate_mode
     global start_time
-    start_time = time.time()
 
     if not config.use_live_data:
-        # sample_rate: samples per second
-        # data: numpy array
         sample_rate, wav_signal = wav_data_reader.read_wav_file(config)
-        signal_min = signal.min()
-        signal_max = signal.max()
     else:
-        sample_rate = 10000
+        sample_rate = config.sample_rate
+        wav_signal = None
         com_port = config.com_port
         baud_rate = config.baud_rate
         nsp_reader.initialize_serial(com_port=com_port, baud_rate=baud_rate)
 
     # stft = Short-Time Fourier Transform. See https://brianmcfee.net/dstbook-site/content/ch09-stft/STFT.html for docs
     # TODO - define appropriate frame length
-    # TODO - place frame length in config.ini or calculate appropriate length
-    stft_frame_length = 2000  # samples
-    stft_hop_length = 1000  # samples
+    stft_frame_length = int(sample_rate * config.update_interval)  # samples
+    stft_hop_length = int(stft_frame_length / 2)  # samples
     hops_per_frame = stft_frame_length / stft_hop_length
     hop_time = stft_hop_length / sample_rate  # time between hops in seconds
 
     i = 0  # initialise loop iteration
 
+    start_time = time.time()
+    start_loop_time = time.time()
+
     while True:
         # print(f"i = {i}")
+        print(f"Time since last loop = {time.time() - start_loop_time:.4f} seconds")
+        start_loop_time = time.time()
 
         if i < stft_frame_length:
             # wait until we have enough samples for stft
             i += stft_hop_length
             continue
-
-        if config.use_live_data:
-            wav_signal = None
 
         frame = get_signal_frame(
             config=config,
@@ -138,21 +135,21 @@ def main(
 
         # Band pass filtering
         b, a = signal.butter(4, [20, 450], 'bandpass', fs=sample_rate)
-        filtered_emg = signal.filtfilt(b, a, filtered_frame)
+        filtered_frame = signal.filtfilt(b, a, filtered_frame)
         # Get power within the band pass filter
-        rms_amplitude = np.sqrt(np.mean(filtered_emg**2))
+        rms_amplitude = np.sqrt(np.mean(filtered_frame**2))
         print(rms_amplitude)
 
         if not calibrate_mode:
             normalized_amplitude = (rms_amplitude - resting_amplitude) / (max_amplitude - resting_amplitude)
             normalized_amplitude = np.clip(normalized_amplitude, 0, 1)
-            
+
             if normalized_amplitude > 0.05:
                 # Map to MIDI note range (e.g., C3 to C6)
                 min_note = 48  # C3
                 max_note = 84  # C6
                 midi_number = min_note + int(normalized_amplitude * (max_note - min_note))
-            
+
                 def midi_to_musicpy_note(midi_number, duration=0.5):
                     """
                     Convert MIDI note number to musicpy note() format and play it
@@ -168,14 +165,13 @@ def main(
                         octave = int(note_with_octave[2:])
                     else:
                         octave = int(note_with_octave[1:])
-                    
+
                     # Create and play the musicpy note
                     return musicpy.note(note_name, octave, duration)
 
 
                 note_obj = midi_to_musicpy_note(midi_number, 0.5)
-                musicpy.play(note_obj)
-
+                # musicpy.play(note_obj)
 
         # emit data if running via backend server
         if from_backend and (i % stft_frame_length == 0):
@@ -187,8 +183,12 @@ def main(
                 rms_amplitude=rms_amplitude
                 )
 
-        time.sleep(0.2)
-        # print(f"hop: {hop_time}")
+        end_loop_time = time.time()
+        loop_time = end_loop_time - start_loop_time
+        print(f"Loop time: {loop_time:.4f} seconds")
+
+        # sleep for additional data, take into account loop processing time
+        time.sleep(config.update_interval - loop_time)
         i += stft_hop_length
 
 

@@ -5,6 +5,7 @@ import socketio
 from scipy import signal
 
 from app.utils.config import Config
+import app.play_notes as play_notes
 import app.data_reading.nsp_data as nsp_reader
 import app.data_reading.wav_data as wav_data_reader
 import app.process_data as process_data
@@ -22,7 +23,6 @@ def get_signal_frame(
         i: int,
         stft_frame_length: int,
         wav_signal: list,
-        sample_rate: int,
         ):
     """
     TODO - docstring
@@ -48,26 +48,39 @@ def get_signal_frame(
 
 
 def emit_data(
+        config: Config,
         sio: socketio.Client,
         frame_data: np.array,
         sample_rate: int,
-        rms_amplitude: int
+        rms_amplitude: int,
+        signal_frequency_content: zip,
+        start_time
         ):
 
-    global start_time
-    current_time = time.time() - start_time
+    time_elapsed = time.perf_counter() - start_time
 
-    time_list = current_time + np.array(range(len(frame_data)))/(sample_rate)
+    frame_length = len(frame_data)
+    # get second half of frame_data, as between two main loops, half of the data is duplicated
+    plot_data = frame_data[frame_length//2:]
+    plot_data_length = len(plot_data)
+    time_list = time_elapsed + np.array(range(plot_data_length))/(sample_rate)
 
-    frame_data = frame_data[1::3]
-    time_list = time_list[1::3]
+    plot_sample_rate = plot_data_length / config.update_interval
+
+    if plot_sample_rate > config.plot_points_per_second:
+        slice_every_n = int(plot_sample_rate / config.plot_points_per_second)
+        plot_data = plot_data[1::slice_every_n]
+        time_list = time_list[1::slice_every_n]
 
     data_dict = {
-        "frame": frame_data.tolist(),
+        "frame": plot_data.tolist(),
         "frame_time": time_list.tolist(),
         "rms_amplitude": rms_amplitude,
-        "rms_sample_time": current_time,
+        "rms_sample_time": time_elapsed,
+        "frequency_magnitude": list(signal_frequency_content),
     }
+
+    print(list(signal_frequency_content))
 
     try:
         sio.emit('signal_frame_update', {"data": data_dict})
@@ -85,7 +98,6 @@ def main(
     """
 
     global calibrate_mode
-    global start_time
 
     if not config.use_live_data:
         sample_rate, wav_signal = wav_data_reader.read_wav_file(config)
@@ -97,21 +109,22 @@ def main(
         nsp_reader.initialize_serial(com_port=com_port, baud_rate=baud_rate)
 
     # stft = Short-Time Fourier Transform. See https://brianmcfee.net/dstbook-site/content/ch09-stft/STFT.html for docs
-    # TODO - define appropriate frame length
-    stft_frame_length = int(sample_rate * config.update_interval)  # samples
-    stft_hop_length = int(stft_frame_length / 2)  # samples
-    hops_per_frame = stft_frame_length / stft_hop_length
-    hop_time = stft_hop_length / sample_rate  # time between hops in seconds
+    # frame length is the samples we are executing the FFT on
+    # hop length is the number of samples between each FFT
+    stft_hop_length = int(sample_rate * config.update_interval)  # sample
+    stft_frame_length = 2 * stft_hop_length  # samples
 
     i = 0  # initialise loop iteration
 
-    start_time = time.time()
-    start_loop_time = time.time()
+    start_time = time.perf_counter()
+    start_loop_time = time.perf_counter()
+
+    # filters
+    notch_frequencies = [config.grid_frequency * i for i in range(1, 8)]
 
     while True:
-        # print(f"i = {i}")
-        print(f"Time since last loop = {time.time() - start_loop_time:.4f} seconds")
-        start_loop_time = time.time()
+        # print(f"Time since last loop = {time.perf_counter() - start_loop_time:.4f} seconds")
+        start_loop_time = time.perf_counter()
 
         if i < stft_frame_length:
             # wait until we have enough samples for stft
@@ -123,84 +136,89 @@ def main(
             i=i,
             stft_frame_length=stft_frame_length,
             wav_signal=wav_signal,
-            sample_rate=sample_rate
             )
 
-        # Notch filtering
-        notch_frequencies = [60, 120, 180, 240, 300, 360, 420]
-        filtered_frame = process_data.apply_notch_filters(
+        # Notch and bandpass filtering
+        filtered_frame = process_data.apply_grid_noise_notch_filters(
             signal_in=frame,
             notch_frequencies=notch_frequencies
             )
 
-        # Band pass filtering
-        b, a = signal.butter(4, [20, 450], 'bandpass', fs=sample_rate)
-        filtered_frame = signal.filtfilt(b, a, filtered_frame)
+        filtered_frame = process_data.apply_bandpass_filters(
+            signal_in=filtered_frame,
+            sample_rate=sample_rate
+            )
+
+        signal_frequency_content = process_data.apply_stft(
+            signal=filtered_frame,
+            sample_rate=sample_rate,
+            )
+        
+        print(signal_frequency_content)
+
         # Get power within the band pass filter
         rms_amplitude = np.sqrt(np.mean(filtered_frame**2))
-        print(rms_amplitude)
+        # print(rms_amplitude)
 
         if not calibrate_mode:
-            normalized_amplitude = (rms_amplitude - resting_amplitude) / (max_amplitude - resting_amplitude)
-            normalized_amplitude = np.clip(normalized_amplitude, 0, 1)
-
-            if normalized_amplitude > 0.05:
-                # Map to MIDI note range (e.g., C3 to C6)
-                min_note = 48  # C3
-                max_note = 84  # C6
-                midi_number = min_note + int(normalized_amplitude * (max_note - min_note))
-
-                def midi_to_musicpy_note(midi_number, duration=0.5):
-                    """
-                    Convert MIDI note number to musicpy note() format and play it
-                    Parameters:
-                    midi_number: int - MIDI note number (e.g., 60 for middle C)
-                    duration: float - note duration in seconds
-                    """
-                    note_with_octave = str(musicpy.degree_to_note(midi_number))
-                    note_name = note_with_octave[0]
-                    # Handle sharps/flats (which would make the note name 2 characters)
-                    if len(note_with_octave) > 2 and note_with_octave[1] in ['#', 'b']:
-                        note_name = note_with_octave[:2]
-                        octave = int(note_with_octave[2:])
-                    else:
-                        octave = int(note_with_octave[1:])
-
-                    # Create and play the musicpy note
-                    return musicpy.note(note_name, octave, duration)
-
-
-                note_obj = midi_to_musicpy_note(midi_number, 0.5)
-                # musicpy.play(note_obj)
+            play_notes.play_notes(
+                config=config,
+                rms_amplitude=rms_amplitude,
+                resting_amplitude=resting_amplitude,
+                max_amplitude=max_amplitude,
+            )
 
         # emit data if running via backend server
-        if from_backend and (i % stft_frame_length == 0):
-            # i % stft_frame_length == 0 ensures we are not duplicating data in graph
+        if from_backend:
             emit_data(
+                config=config,
                 sio=sio,
                 frame_data=frame,
                 sample_rate=sample_rate,
-                rms_amplitude=rms_amplitude
+                rms_amplitude=rms_amplitude,
+                signal_frequency_content=signal_frequency_content,
+                start_time=start_time
                 )
+        
+        # emit_data(
+        #     config=config,
+        #     sio=sio,
+        #     frame_data=frame,
+        #     sample_rate=sample_rate,
+        #     rms_amplitude=rms_amplitude,
+        #     signal_frequency_content=signal_frequency_content,
+        #     start_time=start_time
+        #     )
 
-        end_loop_time = time.time()
+        end_loop_time = time.perf_counter()
         loop_time = end_loop_time - start_loop_time
-        print(f"Loop time: {loop_time:.4f} seconds")
+        # print(f"Loop time: {loop_time:.4f} seconds")
 
         # sleep for additional data, take into account loop processing time
-        time.sleep(config.update_interval - loop_time)
+        if loop_time < config.update_interval:
+            # print(f"Sleeping for {config.update_interval - loop_time:.4f} seconds")
+            time.sleep(config.update_interval - loop_time)
+
         i += stft_hop_length
+
+
+def print_intro_text():
+    with open("app/utils/terminal_intro.txt", "r") as f:
+        intro_text = f.read()
+
+    print(intro_text)
+    time.sleep(1)
 
 
 def start_main_from_backend(sio: socketio.Client):
 
-    print("Starting main() from backend")
     config = Config()
+    print_intro_text()
     main(config=config, from_backend=True, sio=sio)
 
 
 if __name__ == "__main__":
 
-    print("here")
     config = Config()
+    print_intro_text()
     main(config=config)

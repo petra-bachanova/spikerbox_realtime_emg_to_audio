@@ -1,6 +1,5 @@
 import subprocess
 import sys
-import time
 
 # get the python executable
 # expects the venv to be active
@@ -30,8 +29,6 @@ try:
         if client_returncode is not None:
             print(f"{streaming_client} terminated with return code {client_returncode}.")
             break
-
-        # time.sleep(0.1)
 
 except KeyboardInterrupt:
     print("\nKeyboardInterrupt detected; terminating processes...")

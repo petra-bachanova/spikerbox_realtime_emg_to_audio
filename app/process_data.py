@@ -1,12 +1,13 @@
-import numpy as np
 from scipy import signal
+import scipy.fft
+import numpy as np
+import plotly.express as px
 
 
-def apply_notch_filters(signal_in, notch_frequencies: list):
+def apply_grid_noise_notch_filters(signal_in, notch_frequencies: list[int]):
     """
     Apply notch filters to remove specific frequencies from the input signal (e.g., 60 Hz power line interference)
 
-    :param notch_frequencies: (list) A list of frequencies (in Hz) to be removed from the input signal.
     :param input_signal_: (numpy.ndarray) The input signal to which the notch filters will be applied.
     :return: (numpy.ndarray) The input signal with notch filters applied to remove specified frequencies.
     """
@@ -23,29 +24,36 @@ def apply_notch_filters(signal_in, notch_frequencies: list):
     return signal_out
 
 
-def apply_low_pass_filter(frame):
+def apply_bandpass_filters(signal_in, sample_rate: int):
     """
-    TODO - docstring
+    Band pass filtering
+    TODO: docstring
     """
-    pass
+
+    b, a = signal.butter(4, [20, 450], 'bandpass', fs=sample_rate)
+    signal_out = signal.filtfilt(b, a, signal_in)
+
+    return signal_out
 
 
-def apply_high_pass_filter(frame):
-    """
-    TODO - docstring
-    """
-    pass
-
-
-def apply_windowing(frame):
-    """
-    TODO - docstring
-    """
-    pass
-
-
-def apply_stft():
+def apply_stft(signal, sample_rate) -> zip:
     """
     TODO docstring
+    Returns zipped frequency and magnitude of the signal
     """
-    pass
+    f = scipy.fft.fft(signal)
+    freqs = scipy.fft.fftfreq(len(signal), 1/sample_rate)
+
+    # Magnitude - note, this will not reflect actual magnitudes of each frequency component
+    # look into scaling if we want to introduce this.
+    magnitude = np.abs(f)
+
+    # Take positive frequencies only
+    half_N = len(signal) // 2
+    freqs = freqs[:half_N]
+    magnitude = magnitude[:half_N]
+
+    # fig = px.line(x=freqs, y=magnitude)
+    # fig.write_html("freq-magnitude.html")
+
+    return zip(freqs, magnitude)

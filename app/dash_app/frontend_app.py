@@ -7,27 +7,32 @@ import plotly.graph_objs as go
 from flask import Flask
 from flask_socketio import SocketIO
 from plotly.subplots import make_subplots
+import plotly.express as px
+
+from app.utils.config import Config
 
 # Setup Flask server with SocketIO
 server = Flask(__name__)
 socketio = SocketIO(server, cors_allowed_origins="*")
 app = dash.Dash(__name__, server=server)
 
+config = Config()
+
 # Global variables to store data
-signal_frame = []
-signal_frame_times = []
+signal_points = []
+signal_point_times = []
 times = []
 values = []
 rms_amplitudes = []
 rms_amplitude_times = []
-max_points = 100  # Maximum number of points to display
-max_frame_points = 20000
+max_frame_points = int(config.plot_time_span * config.plot_points_per_second)
 streaming_active = True  # Flag to control streaming state
 # Global variable to store the calibrate mode state
 calibrate_mode = False
 # Track the time when calibration mode is activated
 calibration_start_time = None
 calibration_amplitudes = []  # List to store RMS amplitudes during calibration mode
+signal_frequency_magnitude = []
 
 # Define the Dash layout
 app.layout = html.Div([
@@ -58,65 +63,64 @@ app.layout = html.Div([
                 }
             )
     ]),
-    html.Div(
-        [
-            daq.ToggleSwitch(
-                id='calibrate-mode',
-                label='Calibrate mode',
-                labelPosition='left',
-                value=False
-            )
-        ],
-        style={
-            'backgroundColor': '#FF9999',
-            'color': 'white',
-            'padding': '10px 20px',
-            'fontSize': '20px',
-            'borderRadius': '5px',
-            'margin': '10px 0px',
-            'display': 'inline-block',
-            'textAlign': 'center',
-            'border': '2px solid black'
-        }
-    ),
-    html.Div(
-        id='calibrate-message',
-        children="Relax your muscles...",
-        style={
-            'display': 'none',  # Initially hidden
-            'backgroundColor': '#FFFF99',
-            'color': 'black',
-            'padding': '10px 20px',
-            'fontSize': '18px',
-            'borderRadius': '5px',
-            'margin': '10px 0px',
-            'textAlign': 'center',
-            'border': '2px solid black'
-        }
-    ),
-    html.Div(
-        id='calibrate-stats',
-        children="",
-        style={
-            'display': 'none',  # Initially hidden
-            'backgroundColor': '#FFFFCC',
-            'color': 'black',
-            'padding': '10px 20px',
-            'fontSize': '18px',
-            'borderRadius': '5px',
-            'margin': '10px 0px',
-            'textAlign': 'center',
-            'border': '2px solid black'
-        }
-    ),
+    # html.Div(
+    #     [
+    #         daq.ToggleSwitch(
+    #             id='calibrate-mode',
+    #             label='Calibrate mode',
+    #             labelPosition='left',
+    #             value=False
+    #         )
+    #     ],
+    #     style={
+    #         'backgroundColor': '#FF9999',
+    #         'color': 'white',
+    #         'padding': '10px 20px',
+    #         'fontSize': '20px',
+    #         'borderRadius': '5px',
+    #         'margin': '10px 0px',
+    #         'display': 'inline-block',
+    #         'textAlign': 'center',
+    #         'border': '2px solid black'
+    #     }
+    # ),
+    # html.Div(
+    #     id='calibrate-message',
+    #     children="Relax your muscles...",
+    #     style={
+    #         'display': 'none',  # Initially hidden
+    #         'backgroundColor': '#FFFF99',
+    #         'color': 'black',
+    #         'padding': '10px 20px',
+    #         'fontSize': '18px',
+    #         'borderRadius': '5px',
+    #         'margin': '10px 0px',
+    #         'textAlign': 'center',
+    #         'border': '2px solid black'
+    #     }
+    # ),
+    # html.Div(
+    #     id='calibrate-stats',
+    #     children="",
+    #     style={
+    #         'display': 'none',  # Initially hidden
+    #         'backgroundColor': '#FFFFCC',
+    #         'color': 'black',
+    #         'padding': '10px 20px',
+    #         'fontSize': '18px',
+    #         'borderRadius': '5px',
+    #         'margin': '10px 0px',
+    #         'textAlign': 'center',
+    #         'border': '2px solid black'
+    #     }
+    # ),
     dcc.Graph(id='frame-plot', animate=False),
-    # dcc.Graph(id='amplitude-plot', animate=False),
+    dcc.Graph(id='freq-magnitude-plot', animate=False),
     dcc.Interval(
         id='frame-update',
-        interval=200,  # Update graph every x ms
+        interval=1000 * config.update_interval,  # Update graph every x ms
         n_intervals=0
     ),
-    # html.Div(id='test-frame-div'),
     # Hidden div to store the stream state
     html.Div(id='stream-state', style={'display': 'none'}, children='active')
 ])
@@ -208,51 +212,48 @@ def handle_connect():
 def handle_disconnect():
     print('Client disconnected from server')
 
+
 @socketio.on('signal_frame_update')
 def handle_signal_frame_data_update(data):
-    global signal_frame
-    global signal_frame_times
+    global signal_points
+    global signal_point_times
     global rms_amplitudes
     global rms_amplitude_times
+    global max_frame_points
+
+    global signal_frequency_magnitude
 
     # Only process incoming data if streaming is active
     if streaming_active:
-        signal_frame.extend(data['data']['frame'])
-        signal_frame_times.extend(data['data']['frame_time'])
+        signal_points.extend(data['data']['frame'])
+        signal_point_times.extend(data['data']['frame_time'])
         frame_len = len(data['data']['frame'])
 
         rms_amplitudes.append(data['data']['rms_amplitude'])
         rms_amplitude_times.append(data['data']['rms_sample_time'])
 
-        # Keep only the latest points
-        if len(signal_frame) > max_frame_points:
-            signal_frame = signal_frame[frame_len:]
-            signal_frame_times = signal_frame_times[frame_len:]
+        signal_frequency_magnitude = data['data']['frequency_magnitude']
+        # signal_frequency_magnitude = signal_frequency_magnitude[:3]
+        # print("handle_signal_frame_data_update")
+        # print(signal_frequency_magnitude)
 
-            first_frame_time = signal_frame_times[0]
+        # Keep only the latest points
+        if len(signal_points) > max_frame_points:
+            signal_points = signal_points[frame_len:]
+            signal_point_times = signal_point_times[frame_len:]
+
+            first_frame_time = signal_point_times[0]
 
             # Remove entries in rms_amplitude_times and rms_amplitudes less than first_frame_time
             filtered_indices = [i for i, t in enumerate(rms_amplitude_times) if t >= first_frame_time]
             rms_amplitude_times = [rms_amplitude_times[i] for i in filtered_indices]
             rms_amplitudes = [rms_amplitudes[i] for i in filtered_indices]
 
-@socketio.on('data_update')
-def handle_data_update(data):
-    global times, values, streaming_active
-    
-    # Only process incoming data if streaming is active
-    if streaming_active:
-        times.append(data['time'])
-        values.append(data['value'])
-        
-        # Keep only the latest points
-        if len(times) > max_points:
-            times.pop(0)
-            values.pop(0)
 
 @socketio.on('request_streaming_state')
 def send_streaming_state():
     socketio.emit('streaming_state', {'active': streaming_active})
+
 
 # Callback for the button
 @app.callback(
@@ -260,10 +261,11 @@ def send_streaming_state():
 )
 def clear_graphs_and_data(n_clicks):
     # global streaming_active
-    global signal_frame
-    global signal_frame_times
-    signal_frame = []
-    signal_frame_times = []
+    global signal_points
+    global signal_point_times
+    signal_points = []
+    signal_point_times = []
+
 
 # Callback for the button
 @app.callback(
@@ -312,62 +314,47 @@ def toggle_stream(n_clicks, stream_state):
             'margin': '10px 0px'
         }, 'active'
 
-# @app.callback(
-#     Output("test-frame-div", component_property='children'),
-#     Input("frame-update", 'n_intervals'),
-# )
-# def test_show_signal_frame(n):
-#     global signal_frame
-#     print("len(signal_frame)")
-#     print(len(signal_frame))
-#     return f"{signal_frame}"
 
 @app.callback(
-    Output('amplitude-plot', 'figure'),
+    Output('freq-magnitude-plot', 'figure'),
     [Input('frame-update', 'n_intervals')]
 )
-def update_amplitude_plot(n):
-    global rms_amplitudes
-    global rms_amplitude_times
+def update_freq_magnitude_plot(n):
+    global signal_frequency_magnitude
 
-    x_vals = rms_amplitude_times
+    if not signal_frequency_magnitude:
+        # If no data is available, return an empty figure
+        print("No signal frequency magnitude data available.")
+        return go.Figure()
 
-    fig = go.Figure(
-        data=[go.Scatter(
-            x=x_vals,
-            y=rms_amplitudes,
-            name='Total signal amplitude',
-            mode='lines'
-        )]
-    )
+    # print("update_freq_magnitude_plot")
+    # print(signal_frequency_magnitude)
 
-    # Dynamic range for x and y axes
-    x_range = [min(x_vals) if x_vals else 0, max(x_vals) if x_vals else 1]
-    y_range = [min(rms_amplitudes) if rms_amplitudes else 0, max(rms_amplitudes) if rms_amplitudes else 1]
-    # y_range = [-1000, 1000]
-    
-    # Add a small buffer to y-axis range for better visualization
-    y_buffer = (y_range[1] - y_range[0]) * 0.1 if y_range[1] != y_range[0] else 0.1
-    
-    fig.update_layout(
-        title='Test',
-        xaxis=dict(range=x_range, title='Time (s)'),
-        yaxis=dict(
-            range=[y_range[0] - y_buffer, y_range[1] + y_buffer],
-            title='Value'
-        ),
-        margin=dict(l=50, r=50, t=50, b=50)
-    )
+    # unzip to two iterators
+    freqs, magnitude = zip(*signal_frequency_magnitude)
+
+    # freqs = [10, 20, 30, 40]
+    # magnitude = [0.5, 0.8, 0.3, 0.6]
+
+    # print(freqs)
+
+    fig = px.line(
+        x=list(freqs),
+        y=list(magnitude),
+        labels={'x': 'Frequency (Hz)', 'y': 'Magnitude'},
+        title="Frequency Spectrum"
+        )
 
     return fig
+
 
 @app.callback(
     Output('frame-plot', 'figure'),
     [Input('frame-update', 'n_intervals')]
 )
 def update_frame_plot(n):
-    global signal_frame
-    global signal_frame_times
+    global signal_points
+    global signal_point_times
     global rms_amplitudes
     global rms_amplitude_times
 
@@ -376,14 +363,17 @@ def update_frame_plot(n):
         rows=2, cols=1,  # Two rows, one column
         shared_xaxes=True,  # Share the x-axis between the two plots
         vertical_spacing=0.1,  # Space between the plots
-        subplot_titles=("Raw Data", "RMS Amplitudes")  # Titles for each subplot
+        subplot_titles=(
+            "Raw Data",
+            "RMS Amplitudes",
+            ),  # Titles for each subplot
     )
 
     # Add the "raw data" trace to the first subplot
     fig.add_trace(
         go.Scatter(
-            x=signal_frame_times,
-            y=signal_frame,
+            x=signal_point_times,
+            y=signal_points,
             name='Raw Data',
             mode='lines'
         ),
@@ -414,42 +404,7 @@ def update_frame_plot(n):
 
     return fig
 
-# Dash callback to update graph
-@app.callback(
-    Output('live-graph', 'figure'),
-    [Input('graph-update', 'n_intervals')]
-)
-def update_graph(n):
-    global times, values
-    
-    fig = go.Figure(
-        data=[go.Scatter(
-            x=times,
-            y=values,
-            name='Sensor Data',
-            mode='lines+markers'
-        )]
-    )
-    
-    # Dynamic range for x and y axes
-    x_range = [min(times) if times else 0, max(times) if times else 1]
-    y_range = [min(values) if values else 0, max(values) if values else 1]
-    
-    # Add a small buffer to y-axis range for better visualization
-    y_buffer = (y_range[1] - y_range[0]) * 0.1 if y_range[1] != y_range[0] else 0.1
-    
-    fig.update_layout(
-        title='Real-time Data Stream',
-        xaxis=dict(range=x_range, title='Time (s)'),
-        yaxis=dict(
-            range=[y_range[0] - y_buffer, y_range[1] + y_buffer], 
-            title='Value'
-        ),
-        margin=dict(l=50, r=50, t=50, b=50)
-    )
-    
-    return fig
 
 if __name__ == '__main__':
     print("Starting frontend server on http://localhost:8501")
-    socketio.run(server, debug=True, port=8501)
+    socketio.run(server, debug=False, port=8501)

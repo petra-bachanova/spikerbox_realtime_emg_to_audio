@@ -1,8 +1,6 @@
 # backend.py
 import socketio
 import time
-import math
-import random
 
 from app.main import start_main_from_backend
 
@@ -13,31 +11,17 @@ sio = socketio.Client(logger=False, engineio_logger=False)
 # Track connection status
 connected = False
 streaming_enabled = True
-start_time = None
+start_time_client = None
 
-# Generate simulated data
-def generate_data():
-    global start_time
-    current_time = time.time() - start_time
-    
-    # Create a wave pattern with some random noise
-    base_value = math.sin(current_time * 2) * 5  # Sine wave
-    noise = random.uniform(-0.5, 0.5)  # Random noise
-    value = base_value + noise
-    
-    return {
-        'time': round(current_time, 2),
-        'value': round(value, 2)
-    }
 
 # Connect to the frontend
 @sio.event
 def connect():
-    global connected, start_time
+    global connected, start_time_client
     print("Backend connected to frontend server!")
     connected = True
     # Reset the start time when we connect
-    start_time = time.time()
+    start_time_client = time.time()
     # Request the current streaming state
     sio.emit('request_streaming_state')
 
@@ -53,6 +37,7 @@ def streaming_state(data):
     streaming_enabled = data.get('active', True)
     state_text = "enabled" if streaming_enabled else "disabled"
     print(f"Streaming is now {state_text}")
+
 
 def send_data():
     global connected, streaming_enabled
@@ -87,7 +72,7 @@ def connect_with_retry(url, max_retries=5, retry_delay=2):
 
 if __name__ == "__main__":
     # Set initial start time for time-series data
-    start_time = time.time()
+    start_time_client = time.time()
 
     try:
         # Connect to the frontend Socket.IO server with retry logic

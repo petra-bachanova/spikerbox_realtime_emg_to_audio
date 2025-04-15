@@ -36,7 +36,7 @@ def apply_bandpass_filters(signal_in, sample_rate: int):
     return signal_out
 
 
-def apply_stft(signal, sample_rate) -> zip:
+def apply_stft(signal, sample_rate) -> list[str, list[float]]:
     """
     TODO docstring
     Returns zipped frequency and magnitude of the signal
@@ -56,4 +56,4 @@ def apply_stft(signal, sample_rate) -> zip:
     # fig = px.line(x=freqs, y=magnitude)
     # fig.write_html("freq-magnitude.html")
 
-    return zip(freqs, magnitude)
+    return {"frequencies": freqs, "magnitudes": magnitude}

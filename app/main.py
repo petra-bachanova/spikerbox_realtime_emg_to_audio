@@ -1,8 +1,7 @@
 import numpy as np
-import musicpy
 from musicpy import degree_to_note, play
 import socketio
-from scipy import signal
+import pandas as pd
 
 from app.utils.config import Config
 import app.play_notes as play_notes
@@ -53,7 +52,7 @@ def emit_data(
         frame_data: np.array,
         sample_rate: int,
         rms_amplitude: int,
-        signal_frequency_content: zip,
+        signal_frequency_content: dict[str, list[float]],
         start_time
         ):
 
@@ -63,6 +62,8 @@ def emit_data(
     # get second half of frame_data, as between two main loops, half of the data is duplicated
     plot_data = frame_data[frame_length//2:]
     plot_data_length = len(plot_data)
+    # conver to int for data transfer efficiency
+    plot_data = [int(x) for x in plot_data]
     time_list = time_elapsed + np.array(range(plot_data_length))/(sample_rate)
 
     plot_sample_rate = plot_data_length / config.update_interval
@@ -72,15 +73,42 @@ def emit_data(
         plot_data = plot_data[1::slice_every_n]
         time_list = time_list[1::slice_every_n]
 
+    # process frequency and magnitude content
+    frequencies = signal_frequency_content["frequencies"]
+    magnitudes = signal_frequency_content["magnitudes"]
+
+    # calculate the bins for the frequency plot
+    # TODO - get max_frequency setting from front end or config?
+    max_frequency = 500
+    freq_bins = np.linspace(0, max_frequency, config.freq_plot_bins + 1)
+
+    # Digitize x-values to find which bin they fall into
+    bin_indices = np.digitize(frequencies, freq_bins) - 1   # subtract 1 to make 0-based index
+    bin_indices = np.clip(bin_indices, 0, len(freq_bins) - 2)  # ensure stays within valid range
+
+    # Build dataframe and group
+    df = pd.DataFrame({
+        'x': frequencies,
+        'y': magnitudes,
+        'bin': bin_indices
+    })
+
+    # Group by bin and compute mean y and bin center as x
+    grouped = df.groupby('bin').agg({
+        'y': 'mean'
+    }).reset_index()
+    bin_labels = (freq_bins[:-1] + freq_bins[1:]) / 2  # bin centers
+    grouped['x'] = bin_labels[grouped['bin']]
+    grouped = grouped[["x", "y"]].astype(int)
+    freq_magnitude_data_dict = grouped.to_dict(orient='list')  # Convert DataFrame to dict
+
     data_dict = {
-        "frame": plot_data.tolist(),
+        "frame": plot_data,
         "frame_time": time_list.tolist(),
         "rms_amplitude": rms_amplitude,
         "rms_sample_time": time_elapsed,
-        "frequency_magnitude": list(signal_frequency_content),
+        "frequency_magnitude": freq_magnitude_data_dict,
     }
-
-    print(list(signal_frequency_content))
 
     try:
         sio.emit('signal_frame_update', {"data": data_dict})
@@ -153,8 +181,6 @@ def main(
             signal=filtered_frame,
             sample_rate=sample_rate,
             )
-        
-        print(signal_frequency_content)
 
         # Get power within the band pass filter
         rms_amplitude = np.sqrt(np.mean(filtered_frame**2))
@@ -179,7 +205,7 @@ def main(
                 signal_frequency_content=signal_frequency_content,
                 start_time=start_time
                 )
-        
+
         # emit_data(
         #     config=config,
         #     sio=sio,

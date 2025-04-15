@@ -23,5 +23,6 @@ class Config():
 
         self.plot_points_per_second = config.getint("UI", "plot_samples_per_second")
         self.plot_time_span = config.getfloat("UI", "plot_last_n_seconds")
+        self.freq_plot_bins = config.getint("UI", "frequency_plot_bins")
 
         self.grid_frequency = config.getint("FILTERS", "grid_frequency")

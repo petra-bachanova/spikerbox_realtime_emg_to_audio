@@ -32,7 +32,7 @@ calibrate_mode = False
 # Track the time when calibration mode is activated
 calibration_start_time = None
 calibration_amplitudes = []  # List to store RMS amplitudes during calibration mode
-signal_frequency_magnitude = []
+signal_frequency_magnitude = {}
 
 # Define the Dash layout
 app.layout = html.Div([
@@ -330,8 +330,9 @@ def update_freq_magnitude_plot(n):
     # print("update_freq_magnitude_plot")
     # print(signal_frequency_magnitude)
 
-    # unzip to two iterators
-    freqs, magnitude = zip(*signal_frequency_magnitude)
+    # unpack fict into lists
+    freqs = signal_frequency_magnitude["x"]
+    magnitude = signal_frequency_magnitude["y"]
 
     # freqs = [10, 20, 30, 40]
     # magnitude = [0.5, 0.8, 0.3, 0.6]

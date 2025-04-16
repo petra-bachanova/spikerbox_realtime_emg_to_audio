@@ -8,6 +8,7 @@ from flask import Flask
 from flask_socketio import SocketIO
 from plotly.subplots import make_subplots
 import plotly.express as px
+import numpy as np
 
 from app.utils.config import Config
 
@@ -33,6 +34,8 @@ calibrate_mode = False
 calibration_start_time = None
 calibration_amplitudes = []  # List to store RMS amplitudes during calibration mode
 signal_frequency_magnitude = {}
+all_frequencies = []
+all_magnitudes = []
 
 # Define the Dash layout
 app.layout = html.Div([
@@ -116,6 +119,7 @@ app.layout = html.Div([
     # ),
     dcc.Graph(id='frame-plot', animate=False),
     dcc.Graph(id='freq-magnitude-plot', animate=False),
+    dcc.Graph(id='spectrogram-plot', animate=False),
     dcc.Interval(
         id='frame-update',
         interval=1000 * config.update_interval,  # Update graph every x ms
@@ -345,6 +349,38 @@ def update_freq_magnitude_plot(n):
         labels={'x': 'Frequency (Hz)', 'y': 'Magnitude'},
         title="Frequency Spectrum"
         )
+
+    return fig
+
+
+@app.callback(
+    Output('spectrogram-plot', 'figure'),
+    Input('frame-update', 'n_intervals')
+)
+def update_spectrogram(n):
+    global rms_amplitude_times, signal_frequency_magnitude
+    global all_frequencies, all_magnitudes
+
+    all_frequencies.append(signal_frequency_magnitude["x"])
+    all_magnitudes.append(signal_frequency_magnitude["y"])
+
+    z = np.array(all_magnitudes).T  # Shape: freq x time
+    time_labels = rms_amplitude_times
+
+    fig = go.Figure(data=go.Heatmap(
+        z=z,
+        x=time_labels,
+        y=all_frequencies,
+        colorscale='Viridis',
+        zmin=0,
+        zmax=150000
+    ))
+    fig.update_layout(
+        xaxis_title="Time (s)",
+        yaxis_title="Frequency (Hz)",
+        title="Spectrogram",
+        # yaxis=dict(autorange='reversed')  # Flip so low freq is at bottom
+    )
 
     return fig
 

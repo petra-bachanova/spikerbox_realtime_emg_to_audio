@@ -99,8 +99,12 @@ def emit_data(
     }).reset_index()
     bin_labels = (freq_bins[:-1] + freq_bins[1:]) / 2  # bin centers
     grouped['x'] = bin_labels[grouped['bin']]
-    grouped = grouped[["x", "y"]].astype(int)
+    # grouped = grouped[["x", "y"]].astype(int)
+    grouped = grouped[["y"]].astype(int)
     freq_magnitude_data_dict = grouped.to_dict(orient='list')  # Convert DataFrame to dict
+    # magnitudes_2 = grouped["y"].tolist()
+    # print(grouped["x"])
+    # print(magnitudes_2)
 
     data_dict = {
         "frame": plot_data,
@@ -108,6 +112,7 @@ def emit_data(
         "rms_amplitude": rms_amplitude,
         "rms_sample_time": time_elapsed,
         "frequency_magnitude": freq_magnitude_data_dict,
+        # "frequency_magnitude_2": magnitudes_2,
     }
 
     try:
@@ -218,7 +223,6 @@ def main(
 
         end_loop_time = time.perf_counter()
         loop_time = end_loop_time - start_loop_time
-        # print(f"Loop time: {loop_time:.4f} seconds")
 
         # sleep for additional data, take into account loop processing time
         if loop_time < config.update_interval:

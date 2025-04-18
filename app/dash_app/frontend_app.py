@@ -117,9 +117,12 @@ app.layout = html.Div([
     #         'border': '2px solid black'
     #     }
     # ),
-    dcc.Graph(id='frame-plot', animate=False),
-    dcc.Graph(id='freq-magnitude-plot', animate=False),
-    dcc.Graph(id='spectrogram-plot', animate=False),
+    html.Div(
+        [
+            dcc.Graph(id='frame-plot', animate=False, style={'flex': '1', 'margin-right': '10px'}),
+            dcc.Graph(id='freq-magnitude-plot', animate=False, style={'flex': '1'})
+        ],
+        style={'display': 'flex', 'flex-direction': 'row'}),
     dcc.Interval(
         id='frame-update',
         interval=1000 * config.update_interval,  # Update graph every x ms
@@ -226,6 +229,7 @@ def handle_signal_frame_data_update(data):
     global max_frame_points
 
     global signal_frequency_magnitude
+    global all_frequencies, all_magnitudes
 
     # Only process incoming data if streaming is active
     if streaming_active:
@@ -236,22 +240,41 @@ def handle_signal_frame_data_update(data):
         rms_amplitudes.append(data['data']['rms_amplitude'])
         rms_amplitude_times.append(data['data']['rms_sample_time'])
 
+        # print("rms_amplitude_times")
+        # print(len(rms_amplitude_times))
+        # print(config.update_interval)
+        # print(config.plot_points_per_second)
+        # print(config.plot_time_span)
+
         signal_frequency_magnitude = data['data']['frequency_magnitude']
+        # signal_frequency_magnitude = data['data']['frequency_magnitude_2']
         # signal_frequency_magnitude = signal_frequency_magnitude[:3]
         # print("handle_signal_frame_data_update")
         # print(signal_frequency_magnitude)
+
+        # TODO - update this dynamically based on settings
+        fs = range(5, 500, 10)
+        all_frequencies.append(list(fs))
+        # all_frequencies.append(signal_frequency_magnitude["x"])
+        all_magnitudes.append(signal_frequency_magnitude["y"])
+        # all_magnitudes.append(signal_frequency_magnitude)
 
         # Keep only the latest points
         if len(signal_points) > max_frame_points:
             signal_points = signal_points[frame_len:]
             signal_point_times = signal_point_times[frame_len:]
 
+            # first_frame_time is dynamic,
+            # and represents the first time shown in the signal plot
             first_frame_time = signal_point_times[0]
 
             # Remove entries in rms_amplitude_times and rms_amplitudes less than first_frame_time
             filtered_indices = [i for i, t in enumerate(rms_amplitude_times) if t >= first_frame_time]
             rms_amplitude_times = [rms_amplitude_times[i] for i in filtered_indices]
             rms_amplitudes = [rms_amplitudes[i] for i in filtered_indices]
+
+            all_frequencies = [all_frequencies[i] for i in filtered_indices]
+            all_magnitudes = [all_magnitudes[i] for i in filtered_indices]
 
 
 @socketio.on('request_streaming_state')
@@ -331,56 +354,19 @@ def update_freq_magnitude_plot(n):
         print("No signal frequency magnitude data available.")
         return go.Figure()
 
-    # print("update_freq_magnitude_plot")
-    # print(signal_frequency_magnitude)
-
     # unpack fict into lists
-    freqs = signal_frequency_magnitude["x"]
+    # freqs = signal_frequency_magnitude["x"]
+    fs = range(5, 500, 10)
+    freqs = list(fs)
     magnitude = signal_frequency_magnitude["y"]
-
-    # freqs = [10, 20, 30, 40]
-    # magnitude = [0.5, 0.8, 0.3, 0.6]
-
-    # print(freqs)
 
     fig = px.line(
         x=list(freqs),
         y=list(magnitude),
         labels={'x': 'Frequency (Hz)', 'y': 'Magnitude'},
-        title="Frequency Spectrum"
+        title="Frequency Spectrum",
+        range_y=[0, 150000],
         )
-
-    return fig
-
-
-@app.callback(
-    Output('spectrogram-plot', 'figure'),
-    Input('frame-update', 'n_intervals')
-)
-def update_spectrogram(n):
-    global rms_amplitude_times, signal_frequency_magnitude
-    global all_frequencies, all_magnitudes
-
-    all_frequencies.append(signal_frequency_magnitude["x"])
-    all_magnitudes.append(signal_frequency_magnitude["y"])
-
-    z = np.array(all_magnitudes).T  # Shape: freq x time
-    time_labels = rms_amplitude_times
-
-    fig = go.Figure(data=go.Heatmap(
-        z=z,
-        x=time_labels,
-        y=all_frequencies,
-        colorscale='Viridis',
-        zmin=0,
-        zmax=150000
-    ))
-    fig.update_layout(
-        xaxis_title="Time (s)",
-        yaxis_title="Frequency (Hz)",
-        title="Spectrogram",
-        # yaxis=dict(autorange='reversed')  # Flip so low freq is at bottom
-    )
 
     return fig
 
@@ -394,17 +380,23 @@ def update_frame_plot(n):
     global signal_point_times
     global rms_amplitudes
     global rms_amplitude_times
+    global all_frequencies, all_magnitudes
 
     # Create a subplot with two rows and one column
     fig = make_subplots(
-        rows=2, cols=1,  # Two rows, one column
-        shared_xaxes=True,  # Share the x-axis between the two plots
+        rows=3,
+        cols=1,
+        shared_xaxes=True,
         vertical_spacing=0.1,  # Space between the plots
         subplot_titles=(
             "Raw Data",
             "RMS Amplitudes",
+            "Spectrogram",
             ),  # Titles for each subplot
     )
+
+    if not signal_point_times:
+        return fig
 
     # Add the "raw data" trace to the first subplot
     fig.add_trace(
@@ -428,15 +420,36 @@ def update_frame_plot(n):
         row=2, col=1  # Specify the second row
     )
 
+    fig.add_trace(
+        go.Heatmap(
+            z=np.array(all_magnitudes).T,  # Shape: freq x time,
+            x=rms_amplitude_times,
+            y=all_frequencies[-1],
+            colorscale='Viridis',
+            zmin=0,
+            zmax=150000,
+            coloraxis="coloraxis1"  # Assign to a specific color axis
+        ),
+        row=3, col=1
+    )
+
     # Update layout for the figure
     fig.update_layout(
-        title="Raw Data and RMS Amplitudes",
-        xaxis=dict(title="Time (s)"),  # Shared x-axis title
+        title="Raw Data and RMS Amplitudes etc.",
+        xaxis3=dict(title="Time (s)"),  # Shared x-axis title
         yaxis=dict(title="Raw Data"),  # Y-axis for the first subplot
         yaxis2=dict(title="RMS Amplitudes"),  # Y-axis for the second subplot
+        yaxis3=dict(title="Frequency (Hz)", showgrid=False, zeroline=False),  # Y-axis for the third subplot
         height=600,  # Adjust the height of the figure
         margin=dict(l=50, r=50, t=50, b=50),  # Margins
-        legend=dict(x=0, y=1)  # Position the legend
+        showlegend=False,  # Show legend
+        # legend=dict(x=0, y=1),  # Position the legend
+        coloraxis_colorbar=dict(
+            title="Magnitude",  # Title for the color scale
+            x=1,  # Position the color scale to the right of the third subplot
+            y=0.15,  # Align it vertically with the third subplot
+            len=0.3  # Adjust the length of the color scale
+        )
     )
 
     return fig

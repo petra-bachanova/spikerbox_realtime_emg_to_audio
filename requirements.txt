@@ -12,3 +12,4 @@ dash-extensions
 plotly
 python-socketio
 dash-daq
+websocket-client

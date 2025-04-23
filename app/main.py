@@ -1,20 +1,41 @@
 import numpy as np
-from musicpy import degree_to_note, play
 import socketio
 import pandas as pd
+import time
 
 from app.utils.config import Config
 import app.play_notes as play_notes
 import app.data_reading.nsp_data as nsp_reader
 import app.data_reading.wav_data as wav_data_reader
 import app.process_data as process_data
-import time
+import app.utils.save_data as save_data
+
 
 global calibrate_mode
 calibrate_mode = False
 
+global save_data_flag
+save_data_flag = False
+
 resting_amplitude = 6
 max_amplitude = 70
+
+# main_socketio = socketio.Client(logger=False, engineio_logger=False)
+
+
+def end_of_file_handler(
+    save_data_flag: bool,
+    data_record: list
+):
+    print("End of file handler called")
+    print(save_data_flag)
+    if save_data_flag:
+        save_data.save_data(
+            id="test",
+            data_record=data_record
+            )
+
+    print("Reached end of recording. Exiting...")
 
 
 def get_signal_frame(
@@ -22,10 +43,15 @@ def get_signal_frame(
         i: int,
         stft_frame_length: int,
         wav_signal: list,
-        ):
+        ) -> tuple[list, bool]:
     """
     TODO - docstring
     """
+
+    # TODO - see if we can remove this, and
+    # instead propagate the indexerror to main to use there.
+    # initialise as False
+    end_of_data = False
 
     if config.use_live_data:
         # read spikerbox data
@@ -39,11 +65,10 @@ def get_signal_frame(
                 frame_length=stft_frame_length
                 )
         except IndexError:
-            print("Reached end of signal")
-            # TODO - this is ok when running outsite of Dash but not appropriate for Dash
-            exit()
+            frame = None
+            end_of_data = True
 
-    return frame
+    return frame, end_of_data
 
 
 def emit_data(
@@ -121,6 +146,28 @@ def emit_data(
         print(f"Error sending data: {e}")
 
 
+# Define the event handler function
+def update_save_data_flag(flag: bool):
+    global save_data_flag
+
+    if flag["active"]:
+        save_data_flag = True
+    else:
+        save_data_flag = False
+    print("main.py -- update_save_data_flag")
+    print(save_data_flag)
+
+
+def register_sio_events(sio: socketio.Client):
+    """
+    Register socketio save_data event if sio is not None.
+    """
+    if sio is not None:
+        @sio.on('save_data')
+        def handle_save_data_event(flag: bool):
+            update_save_data_flag(flag)
+
+
 def main(
         config: Config,
         from_backend: bool = False,
@@ -129,6 +176,9 @@ def main(
     """
     TODO - docstring
     """
+
+    global save_data_flag
+    save_data_flag = config.save_recording
 
     global calibrate_mode
 
@@ -155,6 +205,12 @@ def main(
     # filters
     notch_frequencies = [config.grid_frequency * i for i in range(1, 8)]
 
+    # data recording
+    data_record = []
+    max_recording_len = sample_rate * config.max_recording_time
+
+    register_sio_events(sio=sio)
+
     while True:
         # print(f"Time since last loop = {time.perf_counter() - start_loop_time:.4f} seconds")
         start_loop_time = time.perf_counter()
@@ -164,12 +220,34 @@ def main(
             i += stft_hop_length
             continue
 
-        frame = get_signal_frame(
+        # NOTE - this is currently not using stft frame length when reading from NSP
+        # it is effectively only using the hop length frame.
+        frame, end_of_data = get_signal_frame(
             config=config,
             i=i,
             stft_frame_length=stft_frame_length,
             wav_signal=wav_signal,
             )
+
+        if end_of_data:
+            # save data and exit
+            print("end_of_data")
+            print(save_data_flag)
+            end_of_file_handler(
+                save_data_flag=save_data_flag,
+                data_record=data_record,
+            )
+            exit()
+
+        # Check for front end signal to record data
+        # TODO - handle diff between frame and stft frame
+        # TODO - move to save_data.py
+        if save_data_flag:
+            if len(data_record) > max_recording_len:
+                # only record last X seconds;
+                # overwrite the first frame with the current frame
+                data_record = data_record[len(frame):]
+            data_record.extend(frame)
 
         # Notch and bandpass filtering
         filtered_frame = process_data.apply_grid_noise_notch_filters(
@@ -210,16 +288,6 @@ def main(
                 signal_frequency_content=signal_frequency_content,
                 start_time=start_time
                 )
-
-        # emit_data(
-        #     config=config,
-        #     sio=sio,
-        #     frame_data=frame,
-        #     sample_rate=sample_rate,
-        #     rms_amplitude=rms_amplitude,
-        #     signal_frequency_content=signal_frequency_content,
-        #     start_time=start_time
-        #     )
 
         end_loop_time = time.perf_counter()
         loop_time = end_loop_time - start_loop_time

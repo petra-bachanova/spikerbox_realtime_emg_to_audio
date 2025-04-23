@@ -26,3 +26,6 @@ class Config():
         self.freq_plot_bins = config.getint("UI", "frequency_plot_bins")
 
         self.grid_frequency = config.getint("FILTERS", "grid_frequency")
+
+        self.save_recording = config.getboolean("SAVE", "save_recording")
+        self.max_recording_time = config.getint("SAVE", "max_recording_time")

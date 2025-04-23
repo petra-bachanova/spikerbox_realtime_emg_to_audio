@@ -3,6 +3,7 @@ import dash
 from dash import dcc, html
 import dash_daq as daq
 from dash.dependencies import Input, Output, State
+import dash_bootstrap_components as dbc
 import plotly.graph_objs as go
 from flask import Flask
 from flask_socketio import SocketIO
@@ -15,7 +16,11 @@ from app.utils.config import Config
 # Setup Flask server with SocketIO
 server = Flask(__name__)
 socketio = SocketIO(server, cors_allowed_origins="*")
-app = dash.Dash(__name__, server=server)
+app = dash.Dash(
+    __name__,
+    server=server,
+    external_stylesheets=[dbc.themes.BOOTSTRAP]
+    )
 
 config = Config()
 
@@ -30,12 +35,39 @@ max_frame_points = int(config.plot_time_span * config.plot_points_per_second)
 streaming_active = True  # Flag to control streaming state
 # Global variable to store the calibrate mode state
 calibrate_mode = False
+record_data_mode = config.save_recording
 # Track the time when calibration mode is activated
 calibration_start_time = None
 calibration_amplitudes = []  # List to store RMS amplitudes during calibration mode
 signal_frequency_magnitude = {}
 all_frequencies = []
 all_magnitudes = []
+
+modal_filename_div = html.Div(
+    [
+        dbc.Label("File Name"),
+        dbc.Input(id="input-filename", placeholder="uuid"),
+    ],
+    className="mb-3",
+)
+
+participant_age_div = html.Div(
+    [
+        dbc.Label("Participant Age"),
+        dbc.Select(
+            id="age-select",
+            options=[
+                {"label": "0-10", "value": "0-10"},
+                {"label": "11-20", "value": "11-20"},
+                {"label": "21-30", "value": "21-30"},
+                {"label": "31-40", "value": "31-40"},
+                {"label": "41-50", "value": "41-50"},
+                {"label": "50+", "value": "50+"},
+            ],
+            placeholder="Select Age Range",
+        ),
+    ]
+)
 
 # Define the Dash layout
 app.layout = html.Div([
@@ -54,17 +86,54 @@ app.layout = html.Div([
             }
         ),
         html.Button(
-                'Clear graphs',
-                id='clear-graphs-button',
-                style={
-                    'backgroundColor': '#FF5555',
-                    'color': 'white',
-                    'padding': '10px 20px',
-                    'fontSize': '16px',
-                    'borderRadius': '5px',
-                    'margin': '10px 0px'
-                }
-            )
+            'Clear graphs',
+            id='clear-graphs-button',
+            style={
+                'backgroundColor': '#FF5555',
+                'color': 'white',
+                'padding': '10px 20px',
+                'fontSize': '16px',
+                'borderRadius': '5px',
+                'margin': '10px 0px'
+            }
+        ),
+        # daq.ToggleSwitch(
+        #     id='record-data',
+        #     label='Record data',
+        #     labelPosition='left',
+        #     value=config.save_recording
+        # ),
+        # daq.BooleanSwitch(
+        #     id='record-data',
+        #     label='Record data',
+        #     on=config.save_recording
+        # ),
+        html.Button(
+            "Start recording",
+            id='start-record-data-button',
+            disabled=False,
+            style={
+                'backgroundColor': '#FF5555',
+                'color': 'white',
+                'padding': '10px 20px',
+                'fontSize': '16px',
+                'borderRadius': '5px',
+                'margin': '10px 0px'
+            }
+        ),
+        html.Button(
+            "Stop recording",
+            id='stop-record-data-button',
+            disabled=True,
+            style={
+                'backgroundColor': '#ffe0e0',
+                'color': 'white',
+                'padding': '10px 20px',
+                'fontSize': '16px',
+                'borderRadius': '5px',
+                'margin': '10px 0px'
+            }
+        )
     ]),
     # html.Div(
     #     [
@@ -129,8 +198,90 @@ app.layout = html.Div([
         n_intervals=0
     ),
     # Hidden div to store the stream state
-    html.Div(id='stream-state', style={'display': 'none'}, children='active')
+    html.Div(id='stream-state', style={'display': 'none'}, children='active'),
+    dbc.Modal(
+        [
+            dbc.ModalHeader("Save recording"),
+            dbc.ModalBody(
+                [
+                    dbc.Form(
+                        [
+                            modal_filename_div,
+                            participant_age_div,
+                        ]
+                    ),
+                ]
+            ),
+            dbc.ModalFooter(
+                [
+                    dbc.Button("Save", id="save-data-button", className="ms-auto", n_clicks=0),
+                    dbc.Button("Cancel", id="cancel-modal", className="ms-auto", n_clicks=0),
+                ],
+            ),
+        ],
+        id="stop-recording-modal",
+        is_open=False,  # Initially hidden
+    ),
 ])
+
+@app.callback(
+    Output("stop-recording-modal", "is_open"),  # To toggle the modal
+    [Input("save-data-button", "n_clicks")],    # Triggered by the Save button
+    [State("input-filename", "value"),          # File name input
+     State("age-select", "value"),              # Age range dropdown
+     State("stop-recording-modal", "is_open")]  # Modal state
+)
+def handle_save_button(save_clicks, file_name, age_range, is_open):
+    # Check which input triggered the callback
+    if not save_clicks:
+        # If the Save button was not clicked, return the current modal state
+        return is_open
+    print("handle_save_button")
+    print(dash.callback_context.triggered)
+    ctx = dash.callback_context
+    if not ctx.triggered:
+        return is_open  # No input triggered, return current modal state
+
+    triggered_id = ctx.triggered[0]["prop_id"].split(".")[0]
+
+    if triggered_id == "save-data-button" and save_clicks:
+        # Assign inputs to variables
+        filename_var = file_name
+        age_range_var = age_range
+
+        # Print or process the inputs
+        print(f"File Name: {filename_var}")
+        print(f"Age Range: {age_range_var}")
+
+        # Perform any additional actions (e.g., save data to a file)
+
+        # Close the modal after saving
+        return False
+
+    # Default: return current modal state
+    return is_open
+
+
+
+# @app.callback(
+#     Input("save-data-button", "n_clicks")
+# )
+# def save_data_button_handler(n):
+#     if n:
+#         print("Save data button clicked")
+
+@app.callback(
+    Output("stop-recording-modal", "is_open"),
+    [Input("stop-record-data-button", "n_clicks"),
+     Input("cancel-modal", "n_clicks")],
+    [State("stop-recording-modal", "is_open")]
+)
+def toggle_modal(stop_clicks, close_clicks, is_open):
+    print("toggle_modal triggered")
+    print(dash.callback_context.triggered)
+    if stop_clicks or close_clicks:
+        return not is_open
+    return is_open
 
 @app.callback(
     [Output('calibrate-message', 'style'),
@@ -282,6 +433,100 @@ def send_streaming_state():
     socketio.emit('streaming_state', {'active': streaming_active})
 
 
+@app.callback(
+    Output('start-record-data-button', 'disabled'),
+    Output('start-record-data-button', 'style'),
+    Output('stop-record-data-button', 'disabled'),
+    Output('stop-record-data-button', 'style'),
+    Input('start-record-data-button', 'n_clicks'),
+    Input('stop-record-data-button', 'n_clicks')
+)
+def handle_recording_buttons(start_clicks, stop_clicks):
+    print("handle_recording_buttons triggered")
+    print(dash.callback_context.triggered)
+    # Determine which button was clicked
+    ctx = dash.callback_context
+
+    if not ctx.triggered:
+        # Page load: return default styles and states
+        return (
+            False,  # start-record-data-button is enabled
+            {
+                'backgroundColor': '#FF5555',
+                'color': 'white',
+                'padding': '10px 20px',
+                'fontSize': '16px',
+                'borderRadius': '5px',
+                'margin': '10px 0px'
+            },
+            True,  # stop-record-data-button is disabled
+            {
+                'backgroundColor': '#ffe0e0',
+                'color': 'white',
+                'padding': '10px 20px',
+                'fontSize': '16px',
+                'borderRadius': '5px',
+                'margin': '10px 0px'
+            }
+        )
+
+    global record_data_mode
+
+    # Check which button was clicked
+    triggered_id = ctx.triggered[0]['prop_id'].split('.')[0]
+
+    if triggered_id == 'start-record-data-button':
+        # Start recording button clicked
+        print("handle_start_recording_button")
+        record_data_mode = True
+        socketio.emit('save_data', {'active': True})
+        return (
+            True,  # Disable start button
+            {
+                'backgroundColor': '#ffe0e0',
+                'color': 'white',
+                'padding': '10px 20px',
+                'fontSize': '16px',
+                'borderRadius': '5px',
+                'margin': '10px 0px'
+            },
+            False,  # Enable stop button
+            {
+                'backgroundColor': '#FF5555',
+                'color': 'white',
+                'padding': '10px 20px',
+                'fontSize': '16px',
+                'borderRadius': '5px',
+                'margin': '10px 0px'
+            }
+        )
+    elif triggered_id == 'stop-record-data-button':
+        # Stop recording button clicked
+        print("handle_stop_recording_button")
+        record_data_mode = False
+        socketio.emit('save_data', {'active': False})
+        return (
+            False,  # Enable start button
+            {
+                'backgroundColor': '#FF5555',
+                'color': 'white',
+                'padding': '10px 20px',
+                'fontSize': '16px',
+                'borderRadius': '5px',
+                'margin': '10px 0px'
+            },
+            True,  # Disable stop button
+            {
+                'backgroundColor': '#ffe0e0',
+                'color': 'white',
+                'padding': '10px 20px',
+                'fontSize': '16px',
+                'borderRadius': '5px',
+                'margin': '10px 0px'
+            }
+        )
+
+
 # Callback for the button
 @app.callback(
     [Input('clear-graphs-button', 'n_clicks')]
@@ -364,7 +609,7 @@ def update_freq_magnitude_plot(n):
         x=list(freqs),
         y=list(magnitude),
         labels={'x': 'Frequency (Hz)', 'y': 'Magnitude'},
-        title="Frequency Spectrum",
+        title="Live frequency spectrum",
         range_y=[0, 150000],
         )
 
@@ -435,7 +680,7 @@ def update_frame_plot(n):
 
     # Update layout for the figure
     fig.update_layout(
-        title="Raw Data and RMS Amplitudes etc.",
+        title="Time series plots",
         xaxis3=dict(title="Time (s)"),  # Shared x-axis title
         yaxis=dict(title="Raw Data"),  # Y-axis for the first subplot
         yaxis2=dict(title="RMS Amplitudes"),  # Y-axis for the second subplot

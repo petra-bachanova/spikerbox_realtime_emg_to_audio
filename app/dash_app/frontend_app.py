@@ -97,17 +97,6 @@ app.layout = html.Div([
                 'margin': '10px 0px'
             }
         ),
-        # daq.ToggleSwitch(
-        #     id='record-data',
-        #     label='Record data',
-        #     labelPosition='left',
-        #     value=config.save_recording
-        # ),
-        # daq.BooleanSwitch(
-        #     id='record-data',
-        #     label='Record data',
-        #     on=config.save_recording
-        # ),
         html.Button(
             "Start recording",
             id='start-record-data-button',
@@ -214,9 +203,10 @@ app.layout = html.Div([
             ),
             dbc.ModalFooter(
                 [
-                    dbc.Button("Save", id="save-data-button", className="ms-auto", n_clicks=0),
-                    dbc.Button("Cancel", id="cancel-modal", className="ms-auto", n_clicks=0),
+                    dbc.Button("Save", id="save-data-button", n_clicks=0),
+                    dbc.Button("Cancel", id="cancel-modal", className="ms-2", n_clicks=0),
                 ],
+                className="d-flex justify-content-end",
             ),
         ],
         id="stop-recording-modal",
@@ -225,62 +215,41 @@ app.layout = html.Div([
 ])
 
 @app.callback(
-    Output("stop-recording-modal", "is_open"),  # To toggle the modal
-    [Input("save-data-button", "n_clicks")],    # Triggered by the Save button
-    [State("input-filename", "value"),          # File name input
-     State("age-select", "value"),              # Age range dropdown
-     State("stop-recording-modal", "is_open")]  # Modal state
+    Output("stop-recording-modal", "is_open"),  # Single output for modal state
+    [Input("stop-record-data-button", "n_clicks"),
+     Input("save-data-button", "n_clicks"),
+     Input("cancel-modal", "n_clicks")],
+    [State("input-filename", "value"),
+     State("age-select", "value"),
+     State("stop-recording-modal", "is_open")]
 )
-def handle_save_button(save_clicks, file_name, age_range, is_open):
-    # Check which input triggered the callback
-    if not save_clicks:
-        # If the Save button was not clicked, return the current modal state
-        return is_open
-    print("handle_save_button")
-    print(dash.callback_context.triggered)
+def handle_modal(stop_clicks, save_clicks, cancel_clicks, file_name, age_range, is_open):
     ctx = dash.callback_context
+    
     if not ctx.triggered:
         return is_open  # No input triggered, return current modal state
-
+    
     triggered_id = ctx.triggered[0]["prop_id"].split(".")[0]
-
-    if triggered_id == "save-data-button" and save_clicks:
-        # Assign inputs to variables
-        filename_var = file_name
-        age_range_var = age_range
-
-        # Print or process the inputs
-        print(f"File Name: {filename_var}")
-        print(f"Age Range: {age_range_var}")
-
-        # Perform any additional actions (e.g., save data to a file)
-
+    
+    if triggered_id == "stop-record-data-button":
+        # Open the modal when stop recording is clicked
+        return True
+    
+    elif triggered_id == "cancel-modal":
+        # Close the modal when cancel is clicked
+        return False
+    
+    elif triggered_id == "save-data-button" and save_clicks:
+        # Process the data when save is clicked
+        if file_name and age_range:
+            print(f"File Name: {file_name}")
+            print(f"Age Range: {age_range}")
+            # TODO - Add save logic. Emit to main.py.
+        
         # Close the modal after saving
         return False
-
+    
     # Default: return current modal state
-    return is_open
-
-
-
-# @app.callback(
-#     Input("save-data-button", "n_clicks")
-# )
-# def save_data_button_handler(n):
-#     if n:
-#         print("Save data button clicked")
-
-@app.callback(
-    Output("stop-recording-modal", "is_open"),
-    [Input("stop-record-data-button", "n_clicks"),
-     Input("cancel-modal", "n_clicks")],
-    [State("stop-recording-modal", "is_open")]
-)
-def toggle_modal(stop_clicks, close_clicks, is_open):
-    print("toggle_modal triggered")
-    print(dash.callback_context.triggered)
-    if stop_clicks or close_clicks:
-        return not is_open
     return is_open
 
 @app.callback(

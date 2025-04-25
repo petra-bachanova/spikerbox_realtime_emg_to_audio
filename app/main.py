@@ -228,16 +228,27 @@ def main(
             stft_frame_length=stft_frame_length,
             wav_signal=wav_signal,
             )
+        
+        if frame is None:
+            print("Frame is empty")
+            end_loop_time = time.perf_counter()
+            loop_time = end_loop_time - start_loop_time
+            # sleep for additional data, take into account loop processing time
+            if loop_time < config.update_interval:
+                # print(f"Sleeping for {config.update_interval - loop_time:.4f} seconds")
+                time.sleep(config.update_interval - loop_time)
+            i += stft_hop_length
+            continue
 
-        if end_of_data:
-            # save data and exit
-            print("end_of_data")
-            print(save_data_flag)
-            end_of_file_handler(
-                save_data_flag=save_data_flag,
-                data_record=data_record,
-            )
-            exit()
+        # if end_of_data:
+        #     # save data and exit
+        #     print("end_of_data")
+        #     print(save_data_flag)
+        #     end_of_file_handler(
+        #         save_data_flag=save_data_flag,
+        #         data_record=data_record,
+        #     )
+        #     # exit()
 
         # Check for front end signal to record data
         # TODO - handle diff between frame and stft frame

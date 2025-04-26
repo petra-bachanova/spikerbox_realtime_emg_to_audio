@@ -1,4 +1,5 @@
 # frontend.py
+from datetime import datetime
 import dash
 from dash import dcc, html
 import dash_daq as daq
@@ -42,21 +43,46 @@ calibration_amplitudes = []  # List to store RMS amplitudes during calibration m
 signal_frequency_magnitude = {}
 all_frequencies = []
 all_magnitudes = []
+save_timestamp = datetime.now()
+back_end_is_connected = False
 
 modal_filename_div = html.Div(
     [
-        dbc.Label("File Name"),
-        dbc.Input(id="input-filename", placeholder="uuid"),
+        dbc.Label("File name"),
+        dbc.Input(id="input-filename", value="atest", placeholder="uuid"),
+        dbc.FormFeedback("Input can only contain alphanumerics and underscores", type="invalid"),
     ],
     className="mb-3",
 )
 
+@app.callback(
+    Output("input-filename", "valid"),
+    Output("input-filename", "invalid"),
+    Output("save-data-button", "disabled"),
+    Input("input-filename", "value"),
+)
+def validate_file_name_input(value):
+    if value is None or "." in value or value == "":
+        return False, True, True  # Show invalid feedback and disable save button
+    else:
+        return True, False, False   # Show valid feedback
+
+hr_component = html.Hr(
+    style={
+        'flexGrow': 1,
+        'borderWidth': "1px",
+        'borderColor': "#808080",
+        'opacity': "unset",
+        'marginLeft': "10px"
+    })
+
 participant_age_div = html.Div(
     [
-        dbc.Label("Participant Age"),
+        dbc.Label("Participant age"),
         dbc.Select(
             id="age-select",
             options=[
+                {"label": "N/A", "value": "N/A"},
                 {"label": "0-10", "value": "0-10"},
                 {"label": "11-20", "value": "11-20"},
                 {"label": "21-30", "value": "21-30"},
@@ -64,129 +90,172 @@ participant_age_div = html.Div(
                 {"label": "41-50", "value": "41-50"},
                 {"label": "50+", "value": "50+"},
             ],
-            placeholder="Select Age Range",
+            placeholder="Select age range",
         ),
     ]
 )
 
-# Define the Dash layout
+# Modify the Dash layout - Add a container with margins
 app.layout = html.Div([
-    html.H1("Make your muscles sing!"),
-    html.Div([
-        html.Button(
-            'Stop Streaming',
-            id='stream-button',
-            style={
-                'backgroundColor': '#FF5555',
-                'color': 'white',
-                'padding': '10px 20px',
-                'fontSize': '16px',
-                'borderRadius': '5px',
-                'margin': '10px 0px'
-            }
-        ),
-        html.Button(
-            'Clear graphs',
-            id='clear-graphs-button',
-            style={
-                'backgroundColor': '#FF5555',
-                'color': 'white',
-                'padding': '10px 20px',
-                'fontSize': '16px',
-                'borderRadius': '5px',
-                'margin': '10px 0px'
-            }
-        ),
-        html.Button(
-            "Start recording",
-            id='start-record-data-button',
-            disabled=False,
-            style={
-                'backgroundColor': '#FF5555',
-                'color': 'white',
-                'padding': '10px 20px',
-                'fontSize': '16px',
-                'borderRadius': '5px',
-                'margin': '10px 0px'
-            }
-        ),
-        html.Button(
-            "Stop recording",
-            id='stop-record-data-button',
-            disabled=True,
-            style={
-                'backgroundColor': '#ffe0e0',
-                'color': 'white',
-                'padding': '10px 20px',
-                'fontSize': '16px',
-                'borderRadius': '5px',
-                'margin': '10px 0px'
-            }
-        )
-    ]),
-    # html.Div(
-    #     [
-    #         daq.ToggleSwitch(
-    #             id='calibrate-mode',
-    #             label='Calibrate mode',
-    #             labelPosition='left',
-    #             value=False
-    #         )
-    #     ],
-    #     style={
-    #         'backgroundColor': '#FF9999',
-    #         'color': 'white',
-    #         'padding': '10px 20px',
-    #         'fontSize': '20px',
-    #         'borderRadius': '5px',
-    #         'margin': '10px 0px',
-    #         'display': 'inline-block',
-    #         'textAlign': 'center',
-    #         'border': '2px solid black'
-    #     }
-    # ),
-    # html.Div(
-    #     id='calibrate-message',
-    #     children="Relax your muscles...",
-    #     style={
-    #         'display': 'none',  # Initially hidden
-    #         'backgroundColor': '#FFFF99',
-    #         'color': 'black',
-    #         'padding': '10px 20px',
-    #         'fontSize': '18px',
-    #         'borderRadius': '5px',
-    #         'margin': '10px 0px',
-    #         'textAlign': 'center',
-    #         'border': '2px solid black'
-    #     }
-    # ),
-    # html.Div(
-    #     id='calibrate-stats',
-    #     children="",
-    #     style={
-    #         'display': 'none',  # Initially hidden
-    #         'backgroundColor': '#FFFFCC',
-    #         'color': 'black',
-    #         'padding': '10px 20px',
-    #         'fontSize': '18px',
-    #         'borderRadius': '5px',
-    #         'margin': '10px 0px',
-    #         'textAlign': 'center',
-    #         'border': '2px solid black'
-    #     }
-    # ),
-    html.Div(
-        [
-            dcc.Graph(id='frame-plot', animate=False, style={'flex': '1', 'margin-right': '10px'}),
-            dcc.Graph(id='freq-magnitude-plot', animate=False, style={'flex': '1'})
+    # Main container with margins
+    dbc.Container([
+        html.H1("Make your muscles sing!", className="mt-4"),
+        
+        # Create a row with three columns for the controls
+        dbc.Row([
+            # Section 1: Streaming Controls
+            dbc.Col([
+                # Container for heading and HR that will be as wide as buttons below
+                html.Div([
+                    # Flexbox container for heading and HR
+                    html.Div([
+                        html.H5("Streaming controls", style={"margin": 0, "whiteSpace": "nowrap"}),
+                        html.Div(hr_component, style={"flexGrow": 1, "marginLeft": "10px"}),
+                    ], style={"display": "flex", "alignItems": "center", "width": "100%"}),
+                    
+                    # Button row
+                    dbc.Row([
+                        dbc.Col(
+                            html.Button(
+                                'Stop Streaming',
+                                id='stream-button',
+                                style={
+                                    'backgroundColor': '#FF5555',
+                                    'color': 'white',
+                                    'padding': '10px 20px',
+                                    'fontSize': '16px',
+                                    'borderRadius': '5px',
+                                    'margin': '10px 0px'
+                                }
+                            ),
+                            width="auto",
+                        ),
+                        dbc.Col(
+                            html.Button(
+                                'Clear graphs',
+                                id='clear-graphs-button',
+                                style={
+                                    'backgroundColor': '#FF5555',
+                                    'color': 'white',
+                                    'padding': '10px 20px',
+                                    'fontSize': '16px',
+                                    'borderRadius': '5px',
+                                    'margin': '10px 0px'
+                                }
+                            ),
+                            width="auto",
+                        )
+                    ],
+                        justify="start",
+                        className="g-2"),
+                ], style={"display": "inline-block"}),  # This div constrains width to content
+            ], width=4),
+
+            # Section 2: Data Recording Controls
+            dbc.Col([
+
+                html.Div([
+                    # Flexbox container for heading and HR
+                    html.Div([
+                        html.H5("Data recording", style={"margin": 0, "whiteSpace": "nowrap"}),
+                        html.Div(hr_component, style={"flexGrow": 1, "marginLeft": "10px"}),
+                    ], style={"display": "flex", "alignItems": "center", "width": "100%"}),
+                
+                    # html.Div([
+                    #     html.H5("Data recording", style={"margin": 0, "paddingRight": "10px"}),
+                    #     hr_component,
+                    # ], style={"display": "flex", "alignItems": "center", "width": "100%"}
+                    # ),
+
+                    # Button row
+                    dbc.Row([
+                        dbc.Col(
+                            html.Button(
+                                "Start recording",
+                                id='start-record-data-button',
+                                disabled=False,
+                                style={
+                                    'backgroundColor': '#FF5555',
+                                    'color': 'white',
+                                    'padding': '10px 20px',
+                                    'fontSize': '16px',
+                                    'borderRadius': '5px',
+                                    'margin': '10px 0'
+                                }
+                            ),
+                            width="auto",  # Adjust column width to fit the button
+                        ),
+                        dbc.Col(
+                            html.Button(
+                                "Stop recording",
+                                id='stop-record-data-button',
+                                disabled=True,
+                                style={
+                                    'backgroundColor': '#ffe0e0',
+                                    'color': 'white',
+                                    'padding': '10px 20px',
+                                    'fontSize': '16px',
+                                    'borderRadius': '5px',
+                                    'margin': '10px 0'
+                                }
+                            ),
+                            width="auto"  # Adjust column width to fit the button
+                        )
+                    ],
+                        justify="start",  # Align left
+                        className="g-2"),  # Add margin between rows
+                    ], style={"display": "inline-block"}),  # This div constrains width to content
+                ], width=4),
+
+            # Section 3: Status Display
+            dbc.Col([
+                html.Div([
+                    html.H5("Status", style={"margin": 0, "paddingRight": "10px"}),
+                    hr_component,
+                ], style={"display": "flex", "alignItems": "center", "width": "100%"}
+                ),
+
+                dbc.Card(
+                    dbc.CardBody(
+                        id="status-card-body",
+                        children="💪 we're singing",
+                        # className="d-flex align-items-center",  # Replaces flexbox styling
+                        className="d-flex align-items-center py-0 px-3", # Zero vertical padding, normal horizontal padding
+                        style={"height": "100%"}, # Ensure CardBody fills the entire Card height
+                        ),
+                    id="status-card",
+                    className="mb-3 mt-2",  # Combines margin classes
+                    color="danger",  # Sets border color (red, similar to your #FF5555)
+                    outline=True,    # Makes it an outline card with transparent background
+                    style={"height": "50px"}
+                ),
+            ], width=4)
+        ], className="mb-4"),
         ],
-        style={'display': 'flex', 'flex-direction': 'row'}),
+    # Set a maximum width and add margins
+    fluid=True,  # Use fluid to allow responsive width
+    style={'maxWidth': '1400px', 'margin': '0 auto', 'padding': '0 50px'}),
+
+    dbc.Container([
+        # Graphs section
+        html.Div(
+            [
+                dcc.Graph(id='frame-plot', animate=False, style={'flex': '1', 'margin-right': '10px'}),
+                dcc.Graph(id='freq-magnitude-plot', animate=False, style={'flex': '1'})
+            ],
+            style={'display': 'flex', 'flex-direction': 'row'}),
+        ],
+        # Set a maximum width and add margins
+        fluid=True,  # Use fluid to allow responsive width
+        style={'maxWidth': '1400px', 'margin': '0 auto', 'padding': '0 20px'}),
+
+    # Components outside container
     dcc.Interval(
         id='frame-update',
-        interval=1000 * config.update_interval,  # Update graph every x ms
-        n_intervals=0
+        interval=1000 * config.update_interval,
+        n_intervals=0,
+        disabled=False
     ),
-    # Hidden div to store the stream state
     html.Div(id='stream-state', style={'display': 'none'}, children='active'),
     dbc.Modal(
         [
@@ -203,54 +272,103 @@ app.layout = html.Div([
             ),
             dbc.ModalFooter(
                 [
-                    dbc.Button("Save", id="save-data-button", n_clicks=0),
+                    dbc.Button("Save", id="save-data-button", n_clicks=0, disabled=False),
                     dbc.Button("Cancel", id="cancel-modal", className="ms-2", n_clicks=0),
                 ],
                 className="d-flex justify-content-end",
             ),
         ],
         id="stop-recording-modal",
-        is_open=False,  # Initially hidden
+        is_open=False,
     ),
+    dcc.Interval(
+        id='backend-connection-checker',
+        interval=1000,
+        n_intervals=0
+    ),
+    dcc.Store(
+        id='backend-connection-status',
+        data=back_end_is_connected
+        ),
 ])
 
 @app.callback(
-    Output("stop-recording-modal", "is_open"),  # Single output for modal state
+    Output('backend-connection-status', 'data'),
+    Input('backend-connection-checker', 'n_intervals')
+)
+def update_backend_connection_status(n):
+    # Return the current value of back_end_is_connected
+    return back_end_is_connected
+
+@app.callback(
+    [Output("status-card-body", "children"),
+     Output("status-card", "color")],
+    Input("backend-connection-status", "data")
+)
+def update_status_card(connected):
+
+    if not connected:
+        color = "danger"
+        text = "⚠️ backend disconnected"
+    else:
+        color = "success"
+        text = "💪 we're singing"
+    
+    return text, color
+
+@app.callback(
+    Output('frame-update', 'disabled'),
+    [Input('stop-recording-modal', 'is_open')]
+)
+def toggle_interval(modal_is_open):
+    # Disable interval updates when modal is open
+    return modal_is_open
+
+@app.callback(
+    [Output("stop-recording-modal", "is_open"),
+     Output("input-filename", "value")],
     [Input("stop-record-data-button", "n_clicks"),
      Input("save-data-button", "n_clicks"),
      Input("cancel-modal", "n_clicks")],
     [State("input-filename", "value"),
      State("age-select", "value"),
-     State("stop-recording-modal", "is_open")]
+     State("stop-recording-modal", "is_open"),]
 )
 def handle_modal(stop_clicks, save_clicks, cancel_clicks, file_name, age_range, is_open):
     ctx = dash.callback_context
+    global save_timestamp
     
     if not ctx.triggered:
-        return is_open  # No input triggered, return current modal state
+        return is_open, ""  # No input triggered, return current modal state
     
     triggered_id = ctx.triggered[0]["prop_id"].split(".")[0]
     
     if triggered_id == "stop-record-data-button":
         # Open the modal when stop recording is clicked
-        return True
+        # update timestamp
+        save_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        return True, save_timestamp
     
     elif triggered_id == "cancel-modal":
         # Close the modal when cancel is clicked
-        return False
+        return False, ""
     
     elif triggered_id == "save-data-button" and save_clicks:
         # Process the data when save is clicked
+        if not age_range or age_range == "":
+            age_range = "N/A"
         if file_name and age_range:
-            print(f"File Name: {file_name}")
-            print(f"Age Range: {age_range}")
-            # TODO - Add save logic. Emit to main.py.
+            save_metadata = {
+                "file_name": file_name,
+                "age_range": age_range
+            }
+            socketio.emit('complete_save_data', save_metadata)
         
         # Close the modal after saving
-        return False
+        return False, ""
     
     # Default: return current modal state
-    return is_open
+    return is_open, ""
 
 @app.callback(
     [Output('calibrate-message', 'style'),
@@ -329,6 +447,7 @@ def update_calibrate_mode(toggle_value):
     return toggle_value
 
 # WebSocket event handler
+# TODO - is this used?
 @socketio.on('connect')
 def handle_connect():
     print('Client connected to server')
@@ -395,6 +514,18 @@ def handle_signal_frame_data_update(data):
 
             all_frequencies = [all_frequencies[i] for i in filtered_indices]
             all_magnitudes = [all_magnitudes[i] for i in filtered_indices]
+
+
+@socketio.on('backend_connected')
+def update_connection_status(data):
+    global back_end_is_connected
+    back_end_is_connected_str = data.get('status', False)
+    if back_end_is_connected_str == "True":
+        back_end_is_connected = True
+        print("(From FE) Backend connected to frontend server!")
+    else:
+        back_end_is_connected = False
+        print("(From FE) Backend disconnected from frontend server")
 
 
 @socketio.on('request_streaming_state')
@@ -581,6 +712,11 @@ def update_freq_magnitude_plot(n):
         title="Live frequency spectrum",
         range_y=[0, 150000],
         )
+
+    fig.update_layout(
+        margin=dict(l=20, r=30, t=20, b=20),
+        height=600
+    )
 
     return fig
 

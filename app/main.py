@@ -2,6 +2,7 @@ import numpy as np
 import socketio
 import pandas as pd
 import time
+from scipy.io import wavfile
 
 from app.utils.config import Config
 import app.play_notes as play_notes
@@ -20,8 +21,6 @@ save_data_flag = False
 resting_amplitude = 6
 max_amplitude = 70
 
-# main_socketio = socketio.Client(logger=False, engineio_logger=False)
-
 
 def end_of_file_handler(
     save_data_flag: bool,
@@ -34,14 +33,19 @@ def end_of_file_handler(
             id="test",
             data_record=data_record
             )
+        save_data_to_file(
+            metadata={
+                "file_name": "test",
+                }
+            )
 
     print("Reached end of recording. Exiting...")
 
 
-def get_signal_frame(
+def get_signal_hop_data(
         config: Config,
         i: int,
-        stft_frame_length: int,
+        stft_hop_length: int,
         wav_signal: list,
         ) -> tuple[list, bool]:
     """
@@ -56,19 +60,19 @@ def get_signal_frame(
     if config.use_live_data:
         # read spikerbox data
         serial_bytes = nsp_reader.read_raw_nsp_data()
-        frame = nsp_reader.process_data(serial_bytes)
+        hop_data = nsp_reader.process_data(serial_bytes)
     else:
         try:
-            frame = wav_data_reader.extract_window(
+            hop_data = wav_data_reader.extract_window(
                 wav_signal=wav_signal,
                 i=i,
-                frame_length=stft_frame_length
+                hop_length=stft_hop_length
                 )
         except IndexError:
-            frame = None
+            hop_data = None
             end_of_data = True
 
-    return frame, end_of_data
+    return hop_data, end_of_data
 
 
 def emit_data(
@@ -158,6 +162,18 @@ def update_save_data_flag(flag: bool):
     print(save_data_flag)
 
 
+def save_data_to_file(metadata: dict):
+    global data_record
+    global sample_rate
+
+    f_name = f"recordings/{metadata["file_name"]}.wav"
+
+    # Write to a wav file
+    np_data = np.array(data_record, dtype=np.int16)
+    print(np_data)
+    wavfile.write(f_name, sample_rate, np_data)
+
+
 def register_sio_events(sio: socketio.Client):
     """
     Register socketio save_data event if sio is not None.
@@ -166,6 +182,12 @@ def register_sio_events(sio: socketio.Client):
         @sio.on('save_data')
         def handle_save_data_event(flag: bool):
             update_save_data_flag(flag)
+
+        @sio.on("complete_save_data")
+        def handle_complete_save_data_event(metadata: dict):
+            print("main.py -- complete_save_data_event")
+            print(metadata)
+            save_data_to_file(metadata=metadata)
 
 
 def main(
@@ -182,6 +204,9 @@ def main(
 
     global calibrate_mode
 
+    global data_record
+    global sample_rate
+
     if not config.use_live_data:
         sample_rate, wav_signal = wav_data_reader.read_wav_file(config)
     else:
@@ -191,10 +216,11 @@ def main(
         baud_rate = config.baud_rate
         nsp_reader.initialize_serial(com_port=com_port, baud_rate=baud_rate)
 
+    print(f"Sample rate: {sample_rate}")
     # stft = Short-Time Fourier Transform. See https://brianmcfee.net/dstbook-site/content/ch09-stft/STFT.html for docs
     # frame length is the samples we are executing the FFT on
     # hop length is the number of samples between each FFT
-    stft_hop_length = int(sample_rate * config.update_interval)  # sample
+    stft_hop_length = int(sample_rate * config.update_interval)  # samples
     stft_frame_length = 2 * stft_hop_length  # samples
 
     i = 0  # initialise loop iteration
@@ -211,6 +237,8 @@ def main(
 
     register_sio_events(sio=sio)
 
+    frame = []
+
     while True:
         # print(f"Time since last loop = {time.perf_counter() - start_loop_time:.4f} seconds")
         start_loop_time = time.perf_counter()
@@ -220,16 +248,25 @@ def main(
             i += stft_hop_length
             continue
 
-        # NOTE - this is currently not using stft frame length when reading from NSP
-        # it is effectively only using the hop length frame.
-        frame, end_of_data = get_signal_frame(
+        # get latest data from NSP, or the next batch of wav file data
+        hop_data, end_of_data = get_signal_hop_data(
             config=config,
             i=i,
-            stft_frame_length=stft_frame_length,
+            stft_hop_length=stft_hop_length,
             wav_signal=wav_signal,
             )
-        
-        if frame is None:
+
+        if end_of_data:
+            # save data and exit
+            print("end_of_data")
+            print(save_data_flag)
+            end_of_file_handler(
+                save_data_flag=save_data_flag,
+                data_record=data_record,
+            )
+            save_data_flag = False
+
+        if hop_data is None or hop_data.size == 0:
             print("Frame is empty")
             end_loop_time = time.perf_counter()
             loop_time = end_loop_time - start_loop_time
@@ -240,15 +277,14 @@ def main(
             i += stft_hop_length
             continue
 
-        # if end_of_data:
-        #     # save data and exit
-        #     print("end_of_data")
-        #     print(save_data_flag)
-        #     end_of_file_handler(
-        #         save_data_flag=save_data_flag,
-        #         data_record=data_record,
-        #     )
-        #     # exit()
+        # from the new data (hop_data), create the frame of stft_frame_length
+        # which will be used for FFT processing
+        if len(frame) >= stft_frame_length:
+            # the first half of the frame is discarded,
+            # the second half is retained for the next iteration
+            frame = frame[stft_hop_length:]
+        # latest hop data appended to end of the frame
+        frame.extend(hop_data)
 
         # Check for front end signal to record data
         # TODO - handle diff between frame and stft frame
@@ -257,8 +293,8 @@ def main(
             if len(data_record) > max_recording_len:
                 # only record last X seconds;
                 # overwrite the first frame with the current frame
-                data_record = data_record[len(frame):]
-            data_record.extend(frame)
+                data_record = data_record[len(hop_data):]
+            data_record.extend(hop_data)
 
         # Notch and bandpass filtering
         filtered_frame = process_data.apply_grid_noise_notch_filters(

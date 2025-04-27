@@ -41,10 +41,13 @@ record_data_mode = config.save_recording
 calibration_start_time = None
 calibration_amplitudes = []  # List to store RMS amplitudes during calibration mode
 signal_frequency_magnitude = {}
+freq_data_min_max = []  # min and max frequences in frequency data passed from backend
 all_frequencies = []
 all_magnitudes = []
 save_timestamp = datetime.now()
 back_end_is_connected = False
+data_available_status = False
+max_magnitude = 0
 
 modal_filename_div = html.Div(
     [
@@ -117,7 +120,7 @@ app.layout = html.Div([
                     dbc.Row([
                         dbc.Col(
                             html.Button(
-                                'Stop Streaming',
+                                'Pause stream',
                                 id='stream-button',
                                 style={
                                     'backgroundColor': '#FF5555',
@@ -125,7 +128,8 @@ app.layout = html.Div([
                                     'padding': '10px 20px',
                                     'fontSize': '16px',
                                     'borderRadius': '5px',
-                                    'margin': '10px 0px'
+                                    'margin': '10px 0px',
+                                    'width': '160px'
                                 }
                             ),
                             width="auto",
@@ -218,7 +222,7 @@ app.layout = html.Div([
                 dbc.Card(
                     dbc.CardBody(
                         id="status-card-body",
-                        children="💪 we're singing",
+                        children="⚠️ backend disconnected",
                         # className="d-flex align-items-center",  # Replaces flexbox styling
                         className="d-flex align-items-center py-0 px-3", # Zero vertical padding, normal horizontal padding
                         style={"height": "100%"}, # Ensure CardBody fills the entire Card height
@@ -240,10 +244,22 @@ app.layout = html.Div([
         # Graphs section
         html.Div(
             [
-                dcc.Graph(id='frame-plot', animate=False, style={'flex': '1', 'margin-right': '10px'}),
-                dcc.Graph(id='freq-magnitude-plot', animate=False, style={'flex': '1'})
+                dcc.Graph(
+                    id='frame-plot',
+                    animate=False,
+                    style={'flex': '1', 'margin-right': '10px'}
+                    ),
+                dcc.Graph(
+                    id='freq-magnitude-plot',
+                    animate=False,
+                    style={'flex': '1', 'align-self': 'center'}
+                    )
             ],
-            style={'display': 'flex', 'flex-direction': 'row'}),
+            style={
+                'display': 'flex',
+                'flex-direction': 'row',
+                'align-items': 'center'
+                }),
         ],
         # Set a maximum width and add margins
         fluid=True,  # Use fluid to allow responsive width
@@ -286,34 +302,67 @@ app.layout = html.Div([
         interval=1000,
         n_intervals=0
     ),
+    dcc.Interval(
+        id='data-available-checker',
+        interval=500,
+        n_intervals=0
+    ),
     dcc.Store(
         id='backend-connection-status',
         data=back_end_is_connected
         ),
+    dcc.Store(
+        id='data-available-status',
+        data=False
+        ),
 ])
+
+@app.callback(
+    Output('data-available-status', 'data'),
+    Input('data-available-checker', 'n_intervals')
+)
+def update_data_available_status(n):
+    global data_available_status
+    # Return the current value of data_available_status
+    return data_available_status
 
 @app.callback(
     Output('backend-connection-status', 'data'),
     Input('backend-connection-checker', 'n_intervals')
 )
 def update_backend_connection_status(n):
+    global back_end_is_connected
     # Return the current value of back_end_is_connected
     return back_end_is_connected
 
 @app.callback(
     [Output("status-card-body", "children"),
      Output("status-card", "color")],
-    Input("backend-connection-status", "data")
+    [Input("backend-connection-status", "data"),
+     Input("data-available-status", "data")]
 )
-def update_status_card(connected):
+def update_status_card(connected, data_available):
+    # Handle None values that might occur during initialization
+    if connected is None:
+        connected = False
+    if data_available is None:
+        data_available = False
+
+    global config
 
     if not connected:
         color = "danger"
         text = "⚠️ backend disconnected"
+    elif not data_available:
+        color = "warning"
+        if config.use_live_data:
+            text = "Backend connected; no data from Spikerbox"
+        else:
+            text = "Backend connected; initializing data, or reached end of file"
     else:
         color = "success"
-        text = "💪 we're singing"
-    
+        text = "💪 we're singing"  # or whatever status message you intended
+
     return text, color
 
 @app.callback(
@@ -461,6 +510,8 @@ def handle_disconnect():
 
 @socketio.on('signal_frame_update')
 def handle_signal_frame_data_update(data):
+    global config
+
     global signal_points
     global signal_point_times
     global rms_amplitudes
@@ -468,6 +519,7 @@ def handle_signal_frame_data_update(data):
     global max_frame_points
 
     global signal_frequency_magnitude
+    global freq_data_min_max
     global all_frequencies, all_magnitudes
 
     # Only process incoming data if streaming is active
@@ -486,13 +538,13 @@ def handle_signal_frame_data_update(data):
         # print(config.plot_time_span)
 
         signal_frequency_magnitude = data['data']['frequency_magnitude']
+        freq_data_min_max = data['data']['frequency_magnitude_freq_min_max']
         # signal_frequency_magnitude = data['data']['frequency_magnitude_2']
         # signal_frequency_magnitude = signal_frequency_magnitude[:3]
         # print("handle_signal_frame_data_update")
         # print(signal_frequency_magnitude)
 
-        # TODO - update this dynamically based on settings
-        fs = range(5, 500, 10)
+        fs = np.linspace(freq_data_min_max[0], freq_data_min_max[1], config.freq_plot_bins)
         all_frequencies.append(list(fs))
         # all_frequencies.append(signal_frequency_magnitude["x"])
         all_magnitudes.append(signal_frequency_magnitude["y"])
@@ -515,17 +567,23 @@ def handle_signal_frame_data_update(data):
             all_frequencies = [all_frequencies[i] for i in filtered_indices]
             all_magnitudes = [all_magnitudes[i] for i in filtered_indices]
 
+@socketio.on('data_available_message')
+def update_data_available_status(data):
+    global data_available_status
+    data_available_status_str = data.get('data', "False")
+    if data_available_status_str == "True":
+        data_available_status = True
+    else:
+        data_available_status = False
 
 @socketio.on('backend_connected')
 def update_connection_status(data):
     global back_end_is_connected
-    back_end_is_connected_str = data.get('status', False)
+    back_end_is_connected_str = data.get('status', "False")
     if back_end_is_connected_str == "True":
         back_end_is_connected = True
-        print("(From FE) Backend connected to frontend server!")
     else:
         back_end_is_connected = False
-        print("(From FE) Backend disconnected from frontend server")
 
 
 @socketio.on('request_streaming_state')
@@ -635,8 +693,18 @@ def clear_graphs_and_data(n_clicks):
     # global streaming_active
     global signal_points
     global signal_point_times
+    global rms_amplitudes
+    global rms_amplitude_times
+    global all_frequencies, all_magnitudes
+    global signal_frequency_magnitude
+
     signal_points = []
     signal_point_times = []
+    rms_amplitudes = []
+    rms_amplitude_times = []
+    all_frequencies = []
+    all_magnitudes = []
+    signal_frequency_magnitude = {}
 
 
 # Callback for the button
@@ -652,13 +720,14 @@ def toggle_stream(n_clicks, stream_state):
     
     if n_clicks is None:
         # Initial state
-        return 'Stop Streaming', {
+        return 'Pause stream', {
             'backgroundColor': '#FF5555',
             'color': 'white',
             'padding': '10px 20px',
             'fontSize': '16px',
             'borderRadius': '5px',
-            'margin': '10px 0px'
+            'margin': '10px 0px',
+            'width': '160px'
         }, 'active'
     
     if stream_state == 'active':
@@ -671,20 +740,28 @@ def toggle_stream(n_clicks, stream_state):
             'padding': '10px 20px',
             'fontSize': '16px',
             'borderRadius': '5px',
-            'margin': '10px 0px'
+            'margin': '10px 0px',
+            'width': '160px'
         }, 'inactive'
     else:
         # Switch to active
         streaming_active = True
         socketio.emit('streaming_state', {'active': True})
-        return 'Stop Streaming', {
+        return 'Pause stream', {
             'backgroundColor': '#FF5555',
             'color': 'white',
             'padding': '10px 20px',
             'fontSize': '16px',
             'borderRadius': '5px',
-            'margin': '10px 0px'
+            'margin': '10px 0px',
+            'width': '160px'
         }, 'active'
+    
+
+def get_max_magnitude():
+    global all_magnitudes
+    global max_magnitude
+    max_magnitude = max([max(i) for i in all_magnitudes])
 
 
 @app.callback(
@@ -692,17 +769,16 @@ def toggle_stream(n_clicks, stream_state):
     [Input('frame-update', 'n_intervals')]
 )
 def update_freq_magnitude_plot(n):
+    global config
     global signal_frequency_magnitude
+    global freq_data_min_max
+    global max_magnitude
 
     if not signal_frequency_magnitude:
         # If no data is available, return an empty figure
-        print("No signal frequency magnitude data available.")
         return go.Figure()
 
-    # unpack fict into lists
-    # freqs = signal_frequency_magnitude["x"]
-    fs = range(5, 500, 10)
-    freqs = list(fs)
+    freqs = np.linspace(freq_data_min_max[0], freq_data_min_max[1], config.freq_plot_bins)
     magnitude = signal_frequency_magnitude["y"]
 
     fig = px.line(
@@ -710,12 +786,15 @@ def update_freq_magnitude_plot(n):
         y=list(magnitude),
         labels={'x': 'Frequency (Hz)', 'y': 'Magnitude'},
         title="Live frequency spectrum",
-        range_y=[0, 150000],
+        range_y=[0, max_magnitude],
         )
 
+    # Fix the margin to prevent title clipping and adjust height
     fig.update_layout(
-        margin=dict(l=20, r=30, t=20, b=20),
-        height=600
+        margin=dict(l=50, r=50, t=50, b=50),  # Increased top margin from 20 to 50
+        height=400,                           # Match height of left graph
+        title_x=0.5,                          # Center the title
+        title_y=0.95                          # Position title slightly lower from the top
     )
 
     return fig
@@ -731,6 +810,7 @@ def update_frame_plot(n):
     global rms_amplitudes
     global rms_amplitude_times
     global all_frequencies, all_magnitudes
+    global max_magnitude
 
     # Create a subplot with two rows and one column
     fig = make_subplots(
@@ -747,6 +827,8 @@ def update_frame_plot(n):
 
     if not signal_point_times:
         return fig
+    
+    get_max_magnitude()
 
     # Add the "raw data" trace to the first subplot
     fig.add_trace(
@@ -777,7 +859,7 @@ def update_frame_plot(n):
             y=all_frequencies[-1],
             colorscale='Viridis',
             zmin=0,
-            zmax=150000,
+            zmax=max_magnitude,
             coloraxis="coloraxis1"  # Assign to a specific color axis
         ),
         row=3, col=1

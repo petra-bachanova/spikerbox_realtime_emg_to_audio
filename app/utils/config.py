@@ -26,6 +26,8 @@ class Config():
         self.freq_plot_bins = config.getint("UI", "frequency_plot_bins")
 
         self.grid_frequency = config.getint("FILTERS", "grid_frequency")
+        self.bandpass_min = config.getint("FILTERS", "bandpass_min")
+        self.bandpass_max = config.getint("FILTERS", "bandpass_max")
 
         self.save_recording = config.getboolean("SAVE", "save_recording")
         self.max_recording_time = config.getint("SAVE", "max_recording_time")

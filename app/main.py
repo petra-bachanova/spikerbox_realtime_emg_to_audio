@@ -26,8 +26,6 @@ def end_of_file_handler(
     save_data_flag: bool,
     data_record: list
 ):
-    print("End of file handler called")
-    print(save_data_flag)
     if save_data_flag:
         save_data.save_data(
             id="test",
@@ -38,8 +36,6 @@ def end_of_file_handler(
                 "file_name": "test",
                 }
             )
-
-    print("Reached end of recording. Exiting...")
 
 
 def get_signal_hop_data(
@@ -107,8 +103,8 @@ def emit_data(
     magnitudes = signal_frequency_content["magnitudes"]
 
     # calculate the bins for the frequency plot
-    # TODO - get max_frequency setting from front end or config?
-    max_frequency = 500
+    # add 10% to the low bandpass filter cut-off frequency
+    max_frequency = int(config.bandpass_max * 1.1)
     freq_bins = np.linspace(0, max_frequency, config.freq_plot_bins + 1)
 
     # Digitize x-values to find which bin they fall into
@@ -128,6 +124,7 @@ def emit_data(
     }).reset_index()
     bin_labels = (freq_bins[:-1] + freq_bins[1:]) / 2  # bin centers
     grouped['x'] = bin_labels[grouped['bin']]
+    min_max_freq = [grouped["x"].min(), grouped["x"].max()]
     # grouped = grouped[["x", "y"]].astype(int)
     grouped = grouped[["y"]].astype(int)
     freq_magnitude_data_dict = grouped.to_dict(orient='list')  # Convert DataFrame to dict
@@ -141,7 +138,7 @@ def emit_data(
         "rms_amplitude": rms_amplitude,
         "rms_sample_time": time_elapsed,
         "frequency_magnitude": freq_magnitude_data_dict,
-        # "frequency_magnitude_2": magnitudes_2,
+        "frequency_magnitude_freq_min_max": min_max_freq,
     }
 
     try:
@@ -216,7 +213,6 @@ def main(
         baud_rate = config.baud_rate
         nsp_reader.initialize_serial(com_port=com_port, baud_rate=baud_rate)
 
-    print(f"Sample rate: {sample_rate}")
     # stft = Short-Time Fourier Transform. See https://brianmcfee.net/dstbook-site/content/ch09-stft/STFT.html for docs
     # frame length is the samples we are executing the FFT on
     # hop length is the number of samples between each FFT
@@ -236,6 +232,7 @@ def main(
     max_recording_len = sample_rate * config.max_recording_time
 
     register_sio_events(sio=sio)
+    last_data_available_bool = False
 
     frame = []
 
@@ -258,8 +255,6 @@ def main(
 
         if end_of_data:
             # save data and exit
-            print("end_of_data")
-            print(save_data_flag)
             end_of_file_handler(
                 save_data_flag=save_data_flag,
                 data_record=data_record,
@@ -267,7 +262,13 @@ def main(
             save_data_flag = False
 
         if hop_data is None or hop_data.size == 0:
-            print("Frame is empty")
+            if not from_backend:
+                print("Frame is empty")
+            if sio:
+                if last_data_available_bool:
+                    # Check if data availability has changed from last loop
+                    sio.emit('data_available_message', {"data": "False"})
+                    last_data_available_bool = False
             end_loop_time = time.perf_counter()
             loop_time = end_loop_time - start_loop_time
             # sleep for additional data, take into account loop processing time
@@ -276,6 +277,12 @@ def main(
                 time.sleep(config.update_interval - loop_time)
             i += stft_hop_length
             continue
+        else:
+            if sio:
+                if not last_data_available_bool:
+                    # Check if data availability has changed from last loop
+                    sio.emit('data_available_message', {"data": "True"})
+                    last_data_available_bool = True
 
         # from the new data (hop_data), create the frame of stft_frame_length
         # which will be used for FFT processing
@@ -304,7 +311,9 @@ def main(
 
         filtered_frame = process_data.apply_bandpass_filters(
             signal_in=filtered_frame,
-            sample_rate=sample_rate
+            sample_rate=sample_rate,
+            lower_bandpass_freq=config.bandpass_min,
+            upper_bandpass_freq=config.bandpass_max
             )
 
         signal_frequency_content = process_data.apply_stft(

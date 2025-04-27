@@ -48,6 +48,7 @@ save_timestamp = datetime.now()
 back_end_is_connected = False
 data_available_status = False
 max_magnitude = 0
+valid_com_ports_list = []
 
 modal_filename_div = html.Div(
     [
@@ -317,6 +318,15 @@ app.layout = html.Div([
         ),
 ])
 
+# @app.callback(
+#     Output('com-ports-status', 'data'),
+#     Input('com-ports-checker', 'n_intervals')
+# )
+# def update_valid_com_ports_list(n):
+#     # TODO
+#     global valid_com_ports_list
+#     return valid_com_ports_list
+
 @app.callback(
     Output('data-available-status', 'data'),
     Input('data-available-checker', 'n_intervals')
@@ -567,6 +577,11 @@ def handle_signal_frame_data_update(data):
             all_frequencies = [all_frequencies[i] for i in filtered_indices]
             all_magnitudes = [all_magnitudes[i] for i in filtered_indices]
 
+@socketio.on('invalid_com_port')
+def update_valid_com_ports_list(data):
+    global valid_com_ports_list
+    valid_com_ports_list = data.get("valid_com_ports", [])
+
 @socketio.on('data_available_message')
 def update_data_available_status(data):
     global data_available_status
@@ -600,8 +615,6 @@ def send_streaming_state():
     Input('stop-record-data-button', 'n_clicks')
 )
 def handle_recording_buttons(start_clicks, stop_clicks):
-    print("handle_recording_buttons triggered")
-    print(dash.callback_context.triggered)
     # Determine which button was clicked
     ctx = dash.callback_context
 

@@ -3,6 +3,7 @@ import socketio
 import pandas as pd
 import time
 from scipy.io import wavfile
+from serial.serialutil import SerialException
 
 from app.utils.config import Config
 import app.play_notes as play_notes
@@ -10,6 +11,7 @@ import app.data_reading.nsp_data as nsp_reader
 import app.data_reading.wav_data as wav_data_reader
 import app.process_data as process_data
 import app.utils.save_data as save_data
+import app.utils.com_port_validation as com_port_validation
 
 
 global calibrate_mode
@@ -43,7 +45,7 @@ def get_signal_hop_data(
         i: int,
         stft_hop_length: int,
         wav_signal: list,
-        ) -> tuple[list, bool]:
+        ) -> tuple[np.array, bool]:
     """
     TODO - docstring
     """
@@ -155,8 +157,6 @@ def update_save_data_flag(flag: bool):
         save_data_flag = True
     else:
         save_data_flag = False
-    print("main.py -- update_save_data_flag")
-    print(save_data_flag)
 
 
 def save_data_to_file(metadata: dict):
@@ -204,6 +204,8 @@ def main(
     global data_record
     global sample_rate
 
+    register_sio_events(sio=sio)
+
     if not config.use_live_data:
         sample_rate, wav_signal = wav_data_reader.read_wav_file(config)
     else:
@@ -211,7 +213,15 @@ def main(
         wav_signal = None
         com_port = config.com_port
         baud_rate = config.baud_rate
-        nsp_reader.initialize_serial(com_port=com_port, baud_rate=baud_rate)
+        try:
+            nsp_reader.initialize_serial(com_port=com_port, baud_rate=baud_rate)
+        except SerialException as e:
+            com_ports = com_port_validation.find_com_ports()
+            if sio:
+                # TODO - send message to front end
+                sio.emit('invalid_com_port', {"valid_com_ports": com_ports})
+            else:
+                raise Exception(f"{e}\nAvailable COM ports: {com_ports}")
 
     # stft = Short-Time Fourier Transform. See https://brianmcfee.net/dstbook-site/content/ch09-stft/STFT.html for docs
     # frame length is the samples we are executing the FFT on
@@ -231,7 +241,6 @@ def main(
     data_record = []
     max_recording_len = sample_rate * config.max_recording_time
 
-    register_sio_events(sio=sio)
     last_data_available_bool = False
 
     frame = []
@@ -292,6 +301,11 @@ def main(
             frame = frame[stft_hop_length:]
         # latest hop data appended to end of the frame
         frame.extend(hop_data)
+
+        if len(frame) < stft_frame_length:
+            # wait until we have enough samples for stft
+            i += stft_hop_length
+            continue
 
         # Check for front end signal to record data
         # TODO - handle diff between frame and stft frame

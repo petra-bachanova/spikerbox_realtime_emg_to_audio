@@ -5,7 +5,7 @@ from app.utils.config import Config
 ser = None
 
 
-def initialize_serial(config: Config, com_port: str, baud_rate: int):
+def initialize_serial(com_port: str, baud_rate: int):
     """
     Initializes the serial connection to the SpikerBox device.
     """
@@ -17,7 +17,7 @@ def initialize_serial(config: Config, com_port: str, baud_rate: int):
         ser.timeout = 0
 
 
-def read_raw_nsp_data(flush_buffer=False):
+def read_raw_nsp_data(flush_buffer=False) -> list:
     """
     Reads raw data from the SpikerBox device over the serial connection
     """
@@ -33,7 +33,7 @@ def read_raw_nsp_data(flush_buffer=False):
     return out
 
 
-def process_data(data):
+def process_data(data) -> np.ndarray:
     """
     Processes the raw data stream from SpikerBox by extracting 16-bit samples.
     Each sample is formed by combining two consecutive bytes, where the most significant bit of the first byte is
@@ -44,7 +44,7 @@ def process_data(data):
     """
 
     data_in = np.array(data)
-    result = []
+    result = np.array([], dtype=np.uint16)
     i = 1
 
     while i < len(data_in)-1:

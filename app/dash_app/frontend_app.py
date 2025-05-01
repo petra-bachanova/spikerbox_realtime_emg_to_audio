@@ -49,11 +49,13 @@ back_end_is_connected = False
 data_available_status = False
 max_magnitude = 0
 valid_com_ports_list = []
+min_rms_amplitude_input = 5
+max_rms_amplitude_input = 1000
 
 modal_filename_div = html.Div(
     [
         dbc.Label("File name"),
-        dbc.Input(id="input-filename", value="atest", placeholder="uuid"),
+        dbc.Input(id="input-filename", value="test", placeholder="uuid"),
         dbc.FormFeedback("Input can only contain alphanumerics and underscores", type="invalid"),
     ],
     className="mb-3",
@@ -66,6 +68,7 @@ modal_filename_div = html.Div(
     Input("input-filename", "value"),
 )
 def validate_file_name_input(value):
+    # TODO - check if filename already exists
     if value is None or "." in value or value == "":
         return False, True, True  # Show invalid feedback and disable save button
     else:
@@ -96,7 +99,22 @@ participant_age_div = html.Div(
             ],
             placeholder="Select age range",
         ),
-    ]
+    ],
+    className="mb-3",
+)
+
+freeform_text_div = html.Div(
+    [
+        dbc.Label("Comments to save"),
+        dbc.Textarea(
+            id="save-comments",
+            placeholder="Record any notes about this recording here...",
+            maxLength=256,
+            style={"width": "100%"},
+        ),
+        html.Small("Max 256 characters", className="form-text text-muted")
+    ],
+    className="mb-3",
 )
 
 # Modify the Dash layout - Add a container with margins
@@ -154,7 +172,7 @@ app.layout = html.Div([
                         justify="start",
                         className="g-2"),
                 ], style={"display": "inline-block"}),  # This div constrains width to content
-            ], width=4),
+            ], width=3),
 
             # Section 2: Data Recording Controls
             dbc.Col([
@@ -165,12 +183,6 @@ app.layout = html.Div([
                         html.H5("Data recording", style={"margin": 0, "whiteSpace": "nowrap"}),
                         html.Div(hr_component, style={"flexGrow": 1, "marginLeft": "10px"}),
                     ], style={"display": "flex", "alignItems": "center", "width": "100%"}),
-                
-                    # html.Div([
-                    #     html.H5("Data recording", style={"margin": 0, "paddingRight": "10px"}),
-                    #     hr_component,
-                    # ], style={"display": "flex", "alignItems": "center", "width": "100%"}
-                    # ),
 
                     # Button row
                     dbc.Row([
@@ -210,14 +222,21 @@ app.layout = html.Div([
                         justify="start",  # Align left
                         className="g-2"),  # Add margin between rows
                     ], style={"display": "inline-block"}),  # This div constrains width to content
-                ], width=4),
+                ], width=3),
 
             # Section 3: Status Display
             dbc.Col([
-                html.Div([
-                    html.H5("Status", style={"margin": 0, "paddingRight": "10px"}),
-                    hr_component,
-                ], style={"display": "flex", "alignItems": "center", "width": "100%"}
+                html.Div(
+                    [
+                        html.H5("Status", style={"margin": 0, "paddingRight": "10px"}),
+                        hr_component,
+                    ],
+                    style={
+                        "display": "flex",
+                        "alignItems": "center",
+                        "width": "100%",
+                        "marginBottom": "10px"
+                        }
                 ),
 
                 dbc.Card(
@@ -232,14 +251,70 @@ app.layout = html.Div([
                     className="mb-3 mt-2",  # Combines margin classes
                     color="danger",  # Sets border color (red, similar to your #FF5555)
                     outline=True,    # Makes it an outline card with transparent background
-                    style={"height": "50px"}
+                    style={"height": "48px"}
                 ),
-            ], width=4)
-        ], className="mb-4"),
+            ], width=3),
+
+            # Section 4, ...
+            dbc.Col([
+                html.Div(
+                    [
+                        html.H5("RMS -> audio band", style={"margin": 0, "paddingRight": "10px"}),
+                        hr_component,
+                    ],
+                    style={
+                        "display": "flex",
+                        "alignItems": "center",
+                        "width": "100%",
+                        "marginBottom": "8px"
+                        }
+                ),
+
+                # Inputs row
+                dbc.Row([
+                    dbc.Col(
+                        html.Div([
+                            html.Span("Min:", style={"marginRight": "5px"}),
+                            dbc.Input(
+                                id='play-at-min-rms-input',
+                                value=min_rms_amplitude_input,
+                                type="number",
+                                style={
+                                    "width": "80px",
+                                    "height": "48px"
+                                    }
+                            ),
+                            ],
+                            style={"display": "flex", "alignItems": "center"}
+                        ),
+                        width="auto",
+                    ),
+                    dbc.Col(
+                        html.Div([
+                            html.Span("Max:", style={"marginRight": "5px"}),
+                            dbc.Input(
+                                id='play-at-max-rms-input',
+                                value=max_rms_amplitude_input,
+                                type="number",
+                                style={
+                                    "width": "80px",
+                                    "height": "48px"
+                                    }
+                            ),
+                            ],
+                            style={"display": "flex", "alignItems": "center"}
+                        ),
+                        width="auto",
+                    ),
+                ]),
+            ], width=3),
         ],
-    # Set a maximum width and add margins
-    fluid=True,  # Use fluid to allow responsive width
-    style={'maxWidth': '1400px', 'margin': '0 auto', 'padding': '0 50px'}),
+            className="mb-4"),
+    ],
+        # Set a maximum width and add margins
+        fluid=True,  # Use fluid to allow responsive width
+        style={'maxWidth': '1400px', 'margin': '0 auto', 'padding': '0 50px'}
+    ),
 
     dbc.Container([
         # Graphs section
@@ -283,6 +358,7 @@ app.layout = html.Div([
                         [
                             modal_filename_div,
                             participant_age_div,
+                            freeform_text_div,
                         ]
                     ),
                 ]
@@ -316,7 +392,29 @@ app.layout = html.Div([
         id='data-available-status',
         data=False
         ),
+    html.Div(id='dummy-output', style={'display': 'none'}),
 ])
+
+@app.callback(
+    Output("dummy-output", "children"),
+    [Input('play-at-min-rms-input', 'value'),
+     Input('play-at-max-rms-input', 'value')]
+)
+def update_rms_ranges_for_audio(min_rms_audio_val, max_rms_audio_val):
+
+    global min_rms_amplitude_input
+    global max_rms_amplitude_input
+
+    if min_rms_audio_val is None or max_rms_audio_val is None:
+        # Handle the case when inputs are not yet available
+        return ""
+    
+    socketio.emit('min-max-rms-audio-update', [min_rms_audio_val, max_rms_audio_val])
+
+    min_rms_amplitude_input = min_rms_audio_val
+    max_rms_amplitude_input = max_rms_audio_val
+
+    return ""
 
 # @app.callback(
 #     Output('com-ports-status', 'data'),
@@ -366,12 +464,12 @@ def update_status_card(connected, data_available):
     elif not data_available:
         color = "warning"
         if config.use_live_data:
-            text = "Backend connected; no data from Spikerbox"
+            text = "⚠️ Backend connected; no data from Spikerbox"
         else:
-            text = "Backend connected; initializing data, or reached end of file"
+            text = "⚠️ Backend connected; initializing data, or reached end of file"
     else:
         color = "success"
-        text = "💪 we're singing"  # or whatever status message you intended
+        text = "💪 we're singing"
 
     return text, color
 
@@ -385,20 +483,23 @@ def toggle_interval(modal_is_open):
 
 @app.callback(
     [Output("stop-recording-modal", "is_open"),
-     Output("input-filename", "value")],
+     Output("input-filename", "value"),
+     Output("age-select", "value"),
+     Output("save-comments", "value")],
     [Input("stop-record-data-button", "n_clicks"),
      Input("save-data-button", "n_clicks"),
      Input("cancel-modal", "n_clicks")],
     [State("input-filename", "value"),
      State("age-select", "value"),
+     State("save-comments", "value"),
      State("stop-recording-modal", "is_open"),]
 )
-def handle_modal(stop_clicks, save_clicks, cancel_clicks, file_name, age_range, is_open):
+def handle_modal(stop_clicks, save_clicks, cancel_clicks, file_name, age_range, save_comments, is_open):
     ctx = dash.callback_context
     global save_timestamp
     
     if not ctx.triggered:
-        return is_open, ""  # No input triggered, return current modal state
+        return is_open, "", "N/A", ""  # No input triggered, return current modal state
     
     triggered_id = ctx.triggered[0]["prop_id"].split(".")[0]
     
@@ -406,28 +507,31 @@ def handle_modal(stop_clicks, save_clicks, cancel_clicks, file_name, age_range, 
         # Open the modal when stop recording is clicked
         # update timestamp
         save_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        return True, save_timestamp
+        return True, save_timestamp, "N/A", ""
     
     elif triggered_id == "cancel-modal":
         # Close the modal when cancel is clicked
-        return False, ""
+        return False, "", "N/A", ""
     
     elif triggered_id == "save-data-button" and save_clicks:
         # Process the data when save is clicked
         if not age_range or age_range == "":
             age_range = "N/A"
+        if not save_comments:
+            save_comments = ""
         if file_name and age_range:
             save_metadata = {
                 "file_name": file_name,
-                "age_range": age_range
+                "age_range": age_range,
+                "save_comments": save_comments,
             }
             socketio.emit('complete_save_data', save_metadata)
         
         # Close the modal after saving
-        return False, ""
+        return False, "", "N/A", ""
     
     # Default: return current modal state
-    return is_open, ""
+    return is_open, "", "N/A", ""
 
 @app.callback(
     [Output('calibrate-message', 'style'),
@@ -815,15 +919,20 @@ def update_freq_magnitude_plot(n):
 
 @app.callback(
     Output('frame-plot', 'figure'),
-    [Input('frame-update', 'n_intervals')]
+    [Input('frame-update', 'n_intervals')],
 )
-def update_frame_plot(n):
+def update_frame_plot(
+    n,
+    ):
     global signal_points
     global signal_point_times
     global rms_amplitudes
     global rms_amplitude_times
     global all_frequencies, all_magnitudes
     global max_magnitude
+
+    global min_rms_amplitude_input
+    global max_rms_amplitude_input
 
     # Create a subplot with two rows and one column
     fig = make_subplots(
@@ -863,6 +972,30 @@ def update_frame_plot(n):
             mode='lines'
         ),
         row=2, col=1  # Specify the second row
+    )
+
+    # Add the first horizontal line (minimum threshold)
+    fig.add_trace(
+        go.Scatter(
+            x=[min(rms_amplitude_times), max(rms_amplitude_times)],  # Span the entire x-range
+            y=[min_rms_amplitude_input, min_rms_amplitude_input],  # Same y-value for both points to create a horizontal line
+            mode='lines',
+            line=dict(color='rgba(0, 0, 0, 0.31)', width=2, dash='dash'),
+            name='Min Threshold'
+        ),
+        row=2, col=1  # Add to the same subplot as RMS amplitudes
+    )
+
+    # Add the second horizontal line (maximum threshold)
+    fig.add_trace(
+        go.Scatter(
+            x=[min(rms_amplitude_times), max(rms_amplitude_times)],  # Span the entire x-range
+            y=[max_rms_amplitude_input, max_rms_amplitude_input],  # Same y-value for both points to create a horizontal line
+            mode='lines',
+            line=dict(color='rgba(0, 0, 0, 0.31)', width=2, dash='dash'),  # Blue dashed line
+            name='Max Threshold'
+        ),
+        row=2, col=1  # Add to the same subplot as RMS amplitudes
     )
 
     fig.add_trace(

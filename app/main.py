@@ -4,6 +4,8 @@ import pandas as pd
 import time
 from scipy.io import wavfile
 from serial.serialutil import SerialException
+import os
+import csv
 
 from app.utils.config import Config
 import app.play_notes as play_notes
@@ -20,6 +22,8 @@ calibrate_mode = False
 global save_data_flag
 save_data_flag = False
 
+global resting_amplitude
+global max_amplitude
 resting_amplitude = 6
 max_amplitude = 70
 
@@ -130,9 +134,6 @@ def emit_data(
     # grouped = grouped[["x", "y"]].astype(int)
     grouped = grouped[["y"]].astype(int)
     freq_magnitude_data_dict = grouped.to_dict(orient='list')  # Convert DataFrame to dict
-    # magnitudes_2 = grouped["y"].tolist()
-    # print(grouped["x"])
-    # print(magnitudes_2)
 
     data_dict = {
         "frame": plot_data,
@@ -159,16 +160,44 @@ def update_save_data_flag(flag: bool):
         save_data_flag = False
 
 
+def update_global_min_max_rms_for_audio(min_max_rms: list[int]):
+    global resting_amplitude
+    global max_amplitude
+
+    resting_amplitude = min_max_rms[0]
+    max_amplitude = min_max_rms[1]
+
+
 def save_data_to_file(metadata: dict):
     global data_record
     global sample_rate
 
     f_name = f"recordings/{metadata["file_name"]}.wav"
+    metadata_fname = "recordings/metadata.csv"
 
     # Write to a wav file
     np_data = np.array(data_record, dtype=np.int16)
-    print(np_data)
     wavfile.write(f_name, sample_rate, np_data)
+
+    # Save the metadata to recordings/metadata.csv
+    # New row as a dictionary
+    new_row = metadata
+
+    # Convert new_row to a DataFrame
+    new_df = pd.DataFrame([new_row])
+
+    # If file exists, read it and append new row
+    if os.path.isfile(metadata_fname):
+        existing_df = pd.read_csv(metadata_fname)
+        combined_df = pd.concat([existing_df, new_df], ignore_index=True)
+    else:
+        combined_df = new_df
+
+    # Save to CSV (overwrites if file exists)
+    combined_df.to_csv(metadata_fname, index=False)
+
+    # Empty the data_record ready for next recording
+    data_record = []
 
 
 def register_sio_events(sio: socketio.Client):
@@ -182,9 +211,11 @@ def register_sio_events(sio: socketio.Client):
 
         @sio.on("complete_save_data")
         def handle_complete_save_data_event(metadata: dict):
-            print("main.py -- complete_save_data_event")
-            print(metadata)
             save_data_to_file(metadata=metadata)
+
+        @sio.on("min-max-rms-audio-update")
+        def handle_update_min_max_rms_audio_event(min_max_rms: list[int]):
+            update_global_min_max_rms_for_audio(min_max_rms=min_max_rms)
 
 
 def main(
@@ -204,6 +235,9 @@ def main(
     global data_record
     global sample_rate
 
+    global resting_amplitude
+    global max_amplitude
+
     register_sio_events(sio=sio)
 
     if not config.use_live_data:
@@ -220,6 +254,8 @@ def main(
             if sio:
                 # TODO - send message to front end
                 sio.emit('invalid_com_port', {"valid_com_ports": com_ports})
+                # TODO - force backend to hang?
+                raise Exception(f"{e}\nAvailable COM ports: {com_ports}")
             else:
                 raise Exception(f"{e}\nAvailable COM ports: {com_ports}")
 

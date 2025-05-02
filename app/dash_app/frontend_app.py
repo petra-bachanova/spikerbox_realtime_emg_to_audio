@@ -235,7 +235,7 @@ app.layout = html.Div([
                         "display": "flex",
                         "alignItems": "center",
                         "width": "100%",
-                        "marginBottom": "8px"
+                        "marginBottom": "10px"
                         }
                 ),
 

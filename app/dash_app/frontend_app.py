@@ -1,7 +1,7 @@
 # frontend.py
 from datetime import datetime
 import dash
-from dash import dcc, html
+from dash import dcc, html, no_update
 import dash_daq as daq
 from dash.dependencies import Input, Output, State
 import dash_bootstrap_components as dbc
@@ -188,7 +188,7 @@ app.layout = html.Div([
                     dbc.Row([
                         dbc.Col(
                             html.Button(
-                                "Start recording",
+                                "Start",
                                 id='start-record-data-button',
                                 disabled=False,
                                 style={
@@ -204,7 +204,7 @@ app.layout = html.Div([
                         ),
                         dbc.Col(
                             html.Button(
-                                "Stop recording",
+                                "Stop",
                                 id='stop-record-data-button',
                                 disabled=True,
                                 style={
@@ -222,7 +222,68 @@ app.layout = html.Div([
                         justify="start",  # Align left
                         className="g-2"),  # Add margin between rows
                     ], style={"display": "inline-block"}),  # This div constrains width to content
-                ], width=3),
+                ], width=2),
+
+            # Section 4, ...
+            dbc.Col([
+                html.Div(
+                    [
+                        html.H5("RMS -> audio band", style={"margin": 0, "paddingRight": "10px"}),
+                        hr_component,
+                    ],
+                    style={
+                        "display": "flex",
+                        "alignItems": "center",
+                        "width": "100%",
+                        "marginBottom": "8px"
+                        }
+                ),
+
+                # Inputs row
+                dbc.Row([
+                    dbc.Col(
+                        html.Div([
+                            # html.Span("Min:", style={"marginRight": "5px"}),
+                            dbc.Input(
+                                id='play-at-min-rms-input',
+                                value=min_rms_amplitude_input,
+                                type="number",
+                                min=0,
+                                style={
+                                    "width": "80px",
+                                    "height": "48px"
+                                    }
+                            ),
+                            html.Span("to", style={"marginRight": "10px", "marginLeft": "10px"}),
+                            dbc.Input(
+                                id='play-at-max-rms-input',
+                                value=max_rms_amplitude_input,
+                                type="number",
+                                min=0,
+                                style={
+                                    "width": "80px",
+                                    "height": "48px"
+                                    }
+                            ),
+                            html.Button(
+                                "Apply",
+                                id="apply-rms-thresholds-btn",
+                                style={
+                                    'backgroundColor': '#FF5555',
+                                    'color': 'white',
+                                    'padding': '10px 20px',
+                                    'fontSize': '16px',
+                                    'borderRadius': '5px',
+                                    'margin': '0px 0px 0px 10px',
+                                }
+                            ),
+                        ],
+                            style={"display": "flex", "alignItems": "center"}
+                        ),
+                        width="auto",
+                    ),
+                ]),
+            ], width="auto"),
 
             # Section 3: Status Display
             dbc.Col([
@@ -255,60 +316,10 @@ app.layout = html.Div([
                 ),
             ], width=3),
 
-            # Section 4, ...
-            dbc.Col([
-                html.Div(
-                    [
-                        html.H5("RMS -> audio band", style={"margin": 0, "paddingRight": "10px"}),
-                        hr_component,
-                    ],
-                    style={
-                        "display": "flex",
-                        "alignItems": "center",
-                        "width": "100%",
-                        "marginBottom": "8px"
-                        }
-                ),
-
-                # Inputs row
-                dbc.Row([
-                    dbc.Col(
-                        html.Div([
-                            html.Span("Min:", style={"marginRight": "5px"}),
-                            dbc.Input(
-                                id='play-at-min-rms-input',
-                                value=min_rms_amplitude_input,
-                                type="number",
-                                style={
-                                    "width": "80px",
-                                    "height": "48px"
-                                    }
-                            ),
-                            ],
-                            style={"display": "flex", "alignItems": "center"}
-                        ),
-                        width="auto",
-                    ),
-                    dbc.Col(
-                        html.Div([
-                            html.Span("Max:", style={"marginRight": "5px"}),
-                            dbc.Input(
-                                id='play-at-max-rms-input',
-                                value=max_rms_amplitude_input,
-                                type="number",
-                                style={
-                                    "width": "80px",
-                                    "height": "48px"
-                                    }
-                            ),
-                            ],
-                            style={"display": "flex", "alignItems": "center"}
-                        ),
-                        width="auto",
-                    ),
-                ]),
-            ], width=3),
+            
         ],
+            justify="between",  # Forces leftmost to left and rightmost to right
+            align="start",
             className="mb-4"),
     ],
         # Set a maximum width and add margins
@@ -396,25 +407,35 @@ app.layout = html.Div([
 ])
 
 @app.callback(
-    Output("dummy-output", "children"),
-    [Input('play-at-min-rms-input', 'value'),
-     Input('play-at-max-rms-input', 'value')]
+    Output("play-at-min-rms-input", "value"),
+    Output("play-at-max-rms-input", "value"),
+    Input("apply-rms-thresholds-btn", "n_clicks"),
+    State("play-at-min-rms-input", "value"),
+    State("play-at-max-rms-input", "value"),
+    prevent_initial_call=True
 )
-def update_rms_ranges_for_audio(min_rms_audio_val, max_rms_audio_val):
+def apply_rms_thresholds(n_clicks, min_val, max_val):
 
     global min_rms_amplitude_input
     global max_rms_amplitude_input
 
-    if min_rms_audio_val is None or max_rms_audio_val is None:
-        # Handle the case when inputs are not yet available
-        return ""
-    
-    socketio.emit('min-max-rms-audio-update', [min_rms_audio_val, max_rms_audio_val])
+    if min_val is None or max_val is None:
+        return no_update, no_update
 
-    min_rms_amplitude_input = min_rms_audio_val
-    max_rms_amplitude_input = max_rms_audio_val
+    # Enforce min >= 0
+    min_val = max(min_val, 0)
 
-    return ""
+    # Enforce max > min
+    if max_val <= min_val:
+        max_val = min_val + 1
+
+    socketio.emit('min-max-rms-audio-update', [min_val, max_val])
+
+    min_rms_amplitude_input = min_val
+    max_rms_amplitude_input = max_val
+
+    return min_val, max_val
+
 
 # @app.callback(
 #     Output('com-ports-status', 'data'),

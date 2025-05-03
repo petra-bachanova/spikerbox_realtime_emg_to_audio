@@ -265,9 +265,9 @@ def main(
 
     Args:
         config (Config): Configuration object containing initial settings.
-        backend_client_running (bool): If True, indicates the backend client is already running 
+        backend_client_running (bool): If True, indicates the backend client is already running
             (e.g. in full app mode with frontend). If False, runs standalone for testing or debugging.
-        sio (socketio.Client | None): Socket.IO client for communicating with the frontend. 
+        sio (socketio.Client | None): Socket.IO client for communicating with the frontend.
             Should be None if backend_client_running is False.
 
     Returns:

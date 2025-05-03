@@ -1,4 +1,3 @@
-# frontend.py
 from datetime import datetime
 import dash
 from dash import dcc, html, no_update
@@ -70,6 +69,7 @@ def validate_file_name_input(value):
         return False, True, True  # Show invalid feedback and disable save button
     else:
         return True, False, False   # Show valid feedback
+
 
 hr_component = html.Hr(
     style={
@@ -303,7 +303,7 @@ app.layout = html.Div([
                         children="⚠️ backend disconnected",
                         # className="d-flex align-items-center",  # Replaces flexbox styling
                         className="d-flex align-items-center py-0 px-3", # Zero vertical padding, normal horizontal padding
-                        style={"height": "100%"}, # Ensure CardBody fills the entire Card height
+                        style={"height": "100%"},  # Ensure CardBody fills the entire Card height
                         ),
                     id="status-card",
                     className="mb-3 mt-2",  # Combines margin classes
@@ -403,6 +403,7 @@ app.layout = html.Div([
     html.Div(id='dummy-output', style={'display': 'none'}),
 ])
 
+
 @app.callback(
     Output("play-at-min-rms-input", "value"),
     Output("play-at-max-rms-input", "value"),
@@ -434,15 +435,6 @@ def apply_rms_thresholds(n_clicks, min_val, max_val):
     return min_val, max_val
 
 
-# @app.callback(
-#     Output('com-ports-status', 'data'),
-#     Input('com-ports-checker', 'n_intervals')
-# )
-# def update_valid_com_ports_list(n):
-#     # TODO
-#     global valid_com_ports_list
-#     return valid_com_ports_list
-
 @app.callback(
     Output('data-available-status', 'data'),
     Input('data-available-checker', 'n_intervals')
@@ -452,6 +444,7 @@ def update_data_available_status(n):
     # Return the current value of data_available_status
     return data_available_status
 
+
 @app.callback(
     Output('backend-connection-status', 'data'),
     Input('backend-connection-checker', 'n_intervals')
@@ -460,6 +453,7 @@ def update_backend_connection_status(n):
     global back_end_is_connected
     # Return the current value of back_end_is_connected
     return back_end_is_connected
+
 
 @app.callback(
     [Output("status-card-body", "children"),
@@ -491,6 +485,7 @@ def update_status_card(connected, data_available):
 
     return text, color
 
+
 @app.callback(
     Output('frame-update', 'disabled'),
     [Input('stop-recording-modal', 'is_open')]
@@ -498,6 +493,7 @@ def update_status_card(connected, data_available):
 def toggle_interval(modal_is_open):
     # Disable interval updates when modal is open
     return modal_is_open
+
 
 @app.callback(
     [Output("stop-recording-modal", "is_open"),
@@ -515,22 +511,22 @@ def toggle_interval(modal_is_open):
 def handle_modal(stop_clicks, save_clicks, cancel_clicks, file_name, age_range, save_comments, is_open):
     ctx = dash.callback_context
     global save_timestamp
-    
+
     if not ctx.triggered:
         return is_open, "", "N/A", ""  # No input triggered, return current modal state
-    
+
     triggered_id = ctx.triggered[0]["prop_id"].split(".")[0]
-    
+
     if triggered_id == "stop-record-data-button":
         # Open the modal when stop recording is clicked
         # update timestamp
         save_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         return True, save_timestamp, "N/A", ""
-    
+
     elif triggered_id == "cancel-modal":
         # Close the modal when cancel is clicked
         return False, "", "N/A", ""
-    
+
     elif triggered_id == "save-data-button" and save_clicks:
         # Process the data when save is clicked
         if not age_range or age_range == "":
@@ -544,10 +540,10 @@ def handle_modal(stop_clicks, save_clicks, cancel_clicks, file_name, age_range, 
                 "save_comments": save_comments,
             }
             socketio.emit('complete_save_data', save_metadata)
-        
+
         # Close the modal after saving
         return False, "", "N/A", ""
-    
+
     # Default: return current modal state
     return is_open, "", "N/A", ""
 
@@ -559,6 +555,7 @@ def handle_connect():
     print('Client connected to server')
     # Tell the client the current streaming state
     socketio.emit('streaming_state', {'active': streaming_active})
+
 
 @socketio.on('disconnect')
 def handle_disconnect():
@@ -588,24 +585,12 @@ def handle_signal_frame_data_update(data):
         rms_amplitudes.append(data['data']['rms_amplitude'])
         rms_amplitude_times.append(data['data']['rms_sample_time'])
 
-        # print("rms_amplitude_times")
-        # print(len(rms_amplitude_times))
-        # print(config.update_interval)
-        # print(config.plot_points_per_second)
-        # print(config.plot_time_span)
-
         signal_frequency_magnitude = data['data']['frequency_magnitude']
         freq_data_min_max = data['data']['frequency_magnitude_freq_min_max']
-        # signal_frequency_magnitude = data['data']['frequency_magnitude_2']
-        # signal_frequency_magnitude = signal_frequency_magnitude[:3]
-        # print("handle_signal_frame_data_update")
-        # print(signal_frequency_magnitude)
 
         fs = np.linspace(freq_data_min_max[0], freq_data_min_max[1], config.freq_plot_bins)
         all_frequencies.append(list(fs))
-        # all_frequencies.append(signal_frequency_magnitude["x"])
         all_magnitudes.append(signal_frequency_magnitude["y"])
-        # all_magnitudes.append(signal_frequency_magnitude)
 
         # Keep only the latest points
         if len(signal_points) > max_frame_points:
@@ -624,10 +609,12 @@ def handle_signal_frame_data_update(data):
             all_frequencies = [all_frequencies[i] for i in filtered_indices]
             all_magnitudes = [all_magnitudes[i] for i in filtered_indices]
 
+
 @socketio.on('invalid_com_port')
 def update_valid_com_ports_list(data):
     global valid_com_ports_list
     valid_com_ports_list = data.get("valid_com_ports", [])
+
 
 @socketio.on('data_available_message')
 def update_data_available_status(data):
@@ -637,6 +624,7 @@ def update_data_available_status(data):
         data_available_status = True
     else:
         data_available_status = False
+
 
 @socketio.on('backend_connected')
 def update_connection_status(data):
@@ -777,7 +765,7 @@ def clear_graphs_and_data(n_clicks):
 )
 def toggle_stream(n_clicks, stream_state):
     global streaming_active
-    
+
     if n_clicks is None:
         # Initial state
         return 'Pause stream', {
@@ -789,7 +777,7 @@ def toggle_stream(n_clicks, stream_state):
             'margin': '10px 0px',
             'width': '160px'
         }, 'active'
-    
+
     if stream_state == 'active':
         # Switch to inactive
         streaming_active = False
@@ -816,7 +804,7 @@ def toggle_stream(n_clicks, stream_state):
             'margin': '10px 0px',
             'width': '160px'
         }, 'active'
-    
+
 
 def get_max_magnitude():
     global all_magnitudes
@@ -864,9 +852,7 @@ def update_freq_magnitude_plot(n):
     Output('frame-plot', 'figure'),
     [Input('frame-update', 'n_intervals')],
 )
-def update_frame_plot(
-    n,
-    ):
+def update_frame_plot(n):
     global signal_points
     global signal_point_times
     global rms_amplitudes
@@ -892,7 +878,7 @@ def update_frame_plot(
 
     if not signal_point_times:
         return fig
-    
+
     get_max_magnitude()
 
     # Add the "raw data" trace to the first subplot

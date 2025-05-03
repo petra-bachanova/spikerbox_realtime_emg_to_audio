@@ -1,4 +1,3 @@
-# backend.py
 import socketio
 import time
 
@@ -26,12 +25,14 @@ def connect():
     sio.emit('backend_connected', {'status': 'True'})
     sio.emit('request_streaming_state')
 
+
 @sio.event
 def disconnect():
     global connected
     print("Backend disconnected from frontend server")
     sio.emit('backend_connected', {'status': 'False'})
     connected = False
+
 
 @sio.event
 def streaming_state(data):

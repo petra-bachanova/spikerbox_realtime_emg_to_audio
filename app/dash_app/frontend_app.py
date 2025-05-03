@@ -33,8 +33,6 @@ rms_amplitudes = []
 rms_amplitude_times = []
 max_frame_points = int(config.plot_time_span * config.plot_points_per_second)
 streaming_active = True  # Flag to control streaming state
-# Global variable to store the calibrate mode state
-calibrate_mode = False
 record_data_mode = config.save_recording
 # Track the time when calibration mode is activated
 calibration_start_time = None
@@ -553,81 +551,6 @@ def handle_modal(stop_clicks, save_clicks, cancel_clicks, file_name, age_range, 
     # Default: return current modal state
     return is_open, "", "N/A", ""
 
-@app.callback(
-    [Output('calibrate-message', 'style'),
-     Output('calibrate-stats', 'style'),
-     Output('calibrate-stats', 'children')],
-    [Input('calibrate-mode', 'value')],
-    [State('calibrate-stats', 'children')]
-)
-def toggle_calibrate_message_and_stats(calibrate_mode, current_stats):
-    global calibration_amplitudes, rms_amplitudes
-    global calibration_min, calibration_max
-
-    if calibrate_mode:
-        # Calibration mode is active
-        if not calibration_amplitudes:
-            # Clear the list when calibration mode is first turned on
-            calibration_amplitudes = []
-
-        # Append the latest RMS amplitude values to the calibration list
-        calibration_amplitudes.extend(rms_amplitudes)
-
-        # Show the "Relax your muscles" message and hide stats
-        return (
-            {
-                'display': 'block',
-                'backgroundColor': '#FFFF99',
-                'color': 'black',
-                'padding': '10px 20px',
-                'fontSize': '18px',
-                'borderRadius': '5px',
-                'margin': '10px 0px',
-                'textAlign': 'center',
-                'border': '2px solid black'
-            },
-            {'display': 'none'},  # Hide stats while calibration is active
-            ""
-        )
-    else:
-        # Calibration mode is turned off
-        if calibration_amplitudes:
-            # Calculate min and max from the calibration list
-            calibration_min = min(calibration_amplitudes)
-            calibration_max = max(calibration_amplitudes)
-            stats_message = f"Min RMS Amplitude: {calibration_min:.2f}, Max RMS Amplitude: {calibration_max:.2f}"
-        else:
-            stats_message = "No data available."
-
-        # Clear the calibration list after use
-        calibration_amplitudes = []
-
-        # Hide the "Relax your muscles" message and show stats
-        return (
-            {'display': 'none'},  # Hide the message
-            {
-                'display': 'block',
-                'backgroundColor': '#FFFFCC',
-                'color': 'black',
-                'padding': '10px 20px',
-                'fontSize': '18px',
-                'borderRadius': '5px',
-                'margin': '10px 0px',
-                'textAlign': 'center',
-                'border': '2px solid black'
-            },
-            stats_message
-        )
-
-# Callback to update the global variable based on the ToggleSwitch position
-@app.callback(
-    Output('calibrate-mode', 'value'),
-    [Input('calibrate-mode', 'value')]
-)
-def update_calibrate_mode(toggle_value):
-    global calibrate_mode
-    calibrate_mode = toggle_value  # Update the global variable
-    return toggle_value
 
 # WebSocket event handler
 # TODO - is this used?

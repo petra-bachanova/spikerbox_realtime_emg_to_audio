@@ -15,13 +15,6 @@ import app.utils.save_data as save_data
 import app.utils.com_port_validation as com_port_validation
 
 
-global calibrate_mode
-calibrate_mode = False
-
-global save_data_flag
-save_data_flag = False
-
-
 def end_of_file_handler(
     save_data_flag: bool,
     data_record: list
@@ -222,8 +215,6 @@ def main(
     global save_data_flag
     save_data_flag = config.save_recording
 
-    global calibrate_mode
-
     global data_record
     global sample_rate
 
@@ -367,12 +358,11 @@ def main(
         rms_amplitude = np.sqrt(np.mean(filtered_frame**2))
         # print(rms_amplitude)
 
-        if not calibrate_mode:
-            play_notes.play_notes(
-                config=config,
-                rms_amplitude=rms_amplitude,
-                rms_to_audio_range=rms_to_audio_range
-            )
+        play_notes.play_notes(
+            config=config,
+            rms_amplitude=rms_amplitude,
+            rms_to_audio_range=rms_to_audio_range
+        )
 
         # emit data if running via backend server
         if from_backend:

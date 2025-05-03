@@ -22,7 +22,7 @@ def handle_hop_data_received_messaging(
         last_data_available_bool: bool,
         ) -> bool:
     """
-    
+    TODO - docstring
     """
 
     if not hop_data_received:
@@ -194,7 +194,6 @@ def update_save_data_flag(flag: bool):
 
 
 def update_global_min_max_rms_for_audio(min_max_rms: list[int]):
-    
     global rms_to_audio_range
     rms_to_audio_range = min_max_rms
 
@@ -249,6 +248,13 @@ def register_sio_events(sio: socketio.Client):
             update_global_min_max_rms_for_audio(min_max_rms=min_max_rms)
 
 
+def print_terminal_intro_text():
+    with open("app/utils/terminal_intro.txt", "r") as f:
+        intro_text = f.read()
+    print(intro_text)
+    time.sleep(1)
+
+
 def main(
         config: Config,
         backend_client_running: bool = False,
@@ -267,6 +273,8 @@ def main(
     Returns:
         None
     """
+
+    print_terminal_intro_text()
 
     # Set up global variables - these are typically global as they are used by socketio funcitons
     # for inputs in the front end to update variables on a 'live' basis in the main() while True loop.
@@ -325,6 +333,7 @@ def main(
     stft_frame = []  # initialise empty frame
     i = 0  # initialise frame counter. Represents how many frames have been processed since the beginning of the loop
 
+    # loop - read and process data, while handling updates from front end, and playing notes
     while True:
         # print(f"Time since last loop = {time.perf_counter() - start_loop_time:.4f} seconds")
         start_loop_time = time.perf_counter()
@@ -377,13 +386,10 @@ def main(
             i += stft_hop_length
             continue
 
-        # Check for front end signal to record data
-        # TODO - handle diff between frame and stft frame
-        # TODO - move to save_data.py
+        # update data_record if we are in save data mode
         if save_data_flag:
             if len(data_record) > max_recording_len:
-                # only record last X seconds;
-                # overwrite the first frame with the current frame
+                # Overwrite the first frame with the current frame
                 data_record = data_record[len(hop_data):]
             data_record.extend(hop_data)
 
@@ -400,12 +406,13 @@ def main(
             upper_bandpass_freq=config.bandpass_max
             )
 
+        # Apply STFT
         signal_frequency_content = process_data.apply_stft(
             signal=filtered_frame,
             sample_rate=sample_rate,
             )
 
-        # Get power within the band pass filter
+        # Get RMS amplitude
         rms_amplitude = np.sqrt(np.mean(filtered_frame**2))
         # print(rms_amplitude)
 
@@ -415,7 +422,7 @@ def main(
             rms_to_audio_range=rms_to_audio_range
         )
 
-        # emit data if running via backend server
+        # emit latest data to front end
         if backend_client_running:
             emit_data(
                 config=config,
@@ -428,27 +435,14 @@ def main(
                 )
 
         sleep_for_loop_interval(config=config, start_loop_time=start_loop_time)
-
         i += stft_hop_length
 
 
-def print_intro_text():
-    with open("app/utils/terminal_intro.txt", "r") as f:
-        intro_text = f.read()
-
-    print(intro_text)
-    time.sleep(1)
-
-
 def start_main_from_backend(sio: socketio.Client):
-
     config = Config()
-    print_intro_text()
     main(config=config, backend_client_running=True, sio=sio)
 
 
 if __name__ == "__main__":
-
     config = Config()
-    print_intro_text()
     main(config=config)

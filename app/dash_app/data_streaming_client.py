@@ -23,12 +23,14 @@ def connect():
     # Reset the start time when we connect
     start_time_client = time.time()
     # Request the current streaming state
+    sio.emit('backend_connected', {'status': 'True'})
     sio.emit('request_streaming_state')
 
 @sio.event
 def disconnect():
     global connected
     print("Backend disconnected from frontend server")
+    sio.emit('backend_connected', {'status': 'False'})
     connected = False
 
 @sio.event

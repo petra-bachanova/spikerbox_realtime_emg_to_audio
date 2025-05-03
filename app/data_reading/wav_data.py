@@ -16,20 +16,20 @@ def read_wav_file(config: Config) -> tuple:
     return sample_rate, data
 
 
-def extract_window(wav_signal, i, frame_length):
+def extract_window(wav_signal, i, hop_length):
     """
     TODO - docstring
     """
 
-    # slice the frame
-    frame = wav_signal[i: i + frame_length]
+    # slice the data to the relevant window
+    hop_data = wav_signal[i: i + hop_length]
 
     # check if length of frame is as expected
     # if not, we have reached the end of the signal
-    if len(frame) < frame_length:
+    if len(hop_data) < hop_length:
         raise IndexError
 
-    return frame
+    return hop_data
 
 
 # def extract_dominant_frequency(wav_file, window_size=1):

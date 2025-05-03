@@ -24,13 +24,18 @@ def apply_grid_noise_notch_filters(signal_in, notch_frequencies: list[int]):
     return signal_out
 
 
-def apply_bandpass_filters(signal_in, sample_rate: int):
+def apply_bandpass_filters(
+        signal_in,
+        sample_rate: int,
+        lower_bandpass_freq: int,
+        upper_bandpass_freq: int
+        ):
     """
     Band pass filtering
     TODO: docstring
     """
 
-    b, a = signal.butter(4, [20, 450], 'bandpass', fs=sample_rate)
+    b, a = signal.butter(4, [lower_bandpass_freq, upper_bandpass_freq], 'bandpass', fs=sample_rate)
     signal_out = signal.filtfilt(b, a, signal_in)
 
     return signal_out

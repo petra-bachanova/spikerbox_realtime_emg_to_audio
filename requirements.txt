@@ -13,3 +13,4 @@ plotly
 python-socketio
 dash-daq
 websocket-client
+dash-bootstrap-components

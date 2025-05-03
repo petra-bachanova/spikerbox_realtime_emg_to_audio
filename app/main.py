@@ -5,7 +5,6 @@ import time
 from scipy.io import wavfile
 from serial.serialutil import SerialException
 import os
-import csv
 
 from app.utils.config import Config
 import app.play_notes as play_notes
@@ -21,11 +20,6 @@ calibrate_mode = False
 
 global save_data_flag
 save_data_flag = False
-
-global resting_amplitude
-global max_amplitude
-resting_amplitude = 6
-max_amplitude = 70
 
 
 def end_of_file_handler(
@@ -161,11 +155,9 @@ def update_save_data_flag(flag: bool):
 
 
 def update_global_min_max_rms_for_audio(min_max_rms: list[int]):
-    global resting_amplitude
-    global max_amplitude
-
-    resting_amplitude = min_max_rms[0]
-    max_amplitude = min_max_rms[1]
+    
+    global rms_to_audio_range
+    rms_to_audio_range = min_max_rms
 
 
 def save_data_to_file(metadata: dict):
@@ -235,8 +227,8 @@ def main(
     global data_record
     global sample_rate
 
-    global resting_amplitude
-    global max_amplitude
+    global rms_to_audio_range
+    rms_to_audio_range = [config.init_lower_rms_audio_val, config.init_upper_rms_audio_val]
 
     register_sio_events(sio=sio)
 
@@ -379,8 +371,7 @@ def main(
             play_notes.play_notes(
                 config=config,
                 rms_amplitude=rms_amplitude,
-                resting_amplitude=resting_amplitude,
-                max_amplitude=max_amplitude,
+                rms_to_audio_range=rms_to_audio_range
             )
 
         # emit data if running via backend server

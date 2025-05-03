@@ -2,7 +2,6 @@
 from datetime import datetime
 import dash
 from dash import dcc, html, no_update
-import dash_daq as daq
 from dash.dependencies import Input, Output, State
 import dash_bootstrap_components as dbc
 import plotly.graph_objs as go
@@ -49,8 +48,8 @@ back_end_is_connected = False
 data_available_status = False
 max_magnitude = 0
 valid_com_ports_list = []
-min_rms_amplitude_input = 5
-max_rms_amplitude_input = 1000
+min_rms_amplitude_input = config.init_lower_rms_audio_val
+max_rms_amplitude_input = config.init_upper_rms_audio_val
 
 modal_filename_div = html.Div(
     [

@@ -27,13 +27,23 @@ def midi_to_musicpy_note(midi_number, duration=0.5):
 def play_notes(
         config: Config,
         rms_amplitude: float,
-        resting_amplitude: float,
-        max_amplitude: float,
+        rms_to_audio_range: list[int],
         ):
+    """
+    From a given RMS amplitude, play a note.
 
-    normalized_amplitude = (rms_amplitude - resting_amplitude) / (max_amplitude - resting_amplitude)
+    Calculation of the note to play is handled here as well as the play audio instruction to the system. 
+    """
+
+    # Extract min and max RMS values, between which we will play notes
+    rms_to_audio_range_min = rms_to_audio_range[0]
+    rms_to_audio_range_max = rms_to_audio_range[1]
+
+    # For the given RMS value range, calculate (proportionally) where the given RMS value falls
+    normalized_amplitude = (rms_amplitude - rms_to_audio_range_min) / (rms_to_audio_range_max - rms_to_audio_range_min)
     normalized_amplitude = np.clip(normalized_amplitude, 0, 1)
 
+    # calculate MIDI number and play MIDI
     if normalized_amplitude > 0.05:
         # Map to MIDI note range (e.g., C3 to C6)
         min_note = 48  # C3

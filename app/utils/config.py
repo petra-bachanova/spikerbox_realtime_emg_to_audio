@@ -16,6 +16,9 @@ class Config():
         self.wav_file_dir = config.get("DEFAULT", "wav_file_dir")
         self.wav_file = config.get("DEFAULT", "wav_file")
         self.play_sounds = config.getboolean("DEFAULT", "play_sounds")
+        # initial range (lower->upper) of RMS values, between which notes will be played
+        self.init_lower_rms_audio_val = config.getint("DEFAULT", "init_lower_rms_audio_val")
+        self.init_upper_rms_audio_val = config.getint("DEFAULT", "init_upper_rms_audio_val")
 
         self.com_port = config.get("NSP", "com_port")
         self.baud_rate = config.getint("NSP", "baud_rate")

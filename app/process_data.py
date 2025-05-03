@@ -1,7 +1,6 @@
 from scipy import signal
 import scipy.fft
 import numpy as np
-import plotly.express as px
 
 
 def apply_grid_noise_notch_filters(signal_in, notch_frequencies: list[int]):

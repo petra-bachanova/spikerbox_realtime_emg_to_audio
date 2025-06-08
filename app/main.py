@@ -20,7 +20,19 @@ def handle_hop_data_received_messaging(
         last_data_available_bool: bool,
         ) -> bool:
     """
-    TODO - docstring
+    Handles data availability messaging between the backend and frontend.
+
+    Emits a Socket.IO message allowing the frontend to indicate whether data is 
+    currently available. Messages are only sent when the data availability status changes.
+
+    Args:
+        hop_data_received (bool): Whether new hop data was received in the current loop.
+        backend_client_running (bool): Whether the backend client process is running.
+        sio (socketio.Client | None): The Socket.IO client used to emit messages to the frontend.
+        last_data_available_bool (bool): The last known state of data availability.
+
+    Returns:
+        bool: The updated data availability status to be stored for future comparisons.
     """
 
     if not hop_data_received:

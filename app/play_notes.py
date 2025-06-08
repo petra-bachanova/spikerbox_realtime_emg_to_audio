@@ -1,5 +1,6 @@
 import musicpy
 import numpy as np
+import time
 
 from app.utils.config import Config
 
@@ -20,7 +21,7 @@ def midi_to_musicpy_note(midi_number, duration=0.5):
     else:
         octave = int(note_with_octave[1:])
 
-    # Create and play the musicpy note
+    # Create the musicpy note
     return musicpy.note(note_name, octave, duration)
 
 
@@ -52,4 +53,8 @@ def play_notes(
 
         if config.play_sounds:
             note_obj = midi_to_musicpy_note(midi_number, config.update_interval)
+            print(note_obj)
+            print(note_obj.duration)
+            print(time.time())
             musicpy.play(note_obj)
+            print(time.time())

@@ -562,6 +562,25 @@ def handle_disconnect():
     print('Client disconnected from server')
 
 
+def reorder_streamed_data(
+        time_data: list[float],
+        *sample_data_lists: list[float]
+        ) -> tuple[list[float], ...]:
+    """
+    Reorders time_data and all corresponding sample_data_lists
+    based on ascending time order.
+
+    Returns a tuple of (sorted_time_data, sorted_sample1, sorted_sample2, ...)
+    """
+    # Combine time and all samples into tuples: (time, sample1, sample2, ...)
+    combined = list(zip(time_data, *sample_data_lists))
+    # Sort by the time value
+    combined.sort(key=lambda x: x[0])
+    # Unzip into separate lists
+    reordered = list(zip(*combined))
+    return tuple(map(list, reordered))  # Convert each tuple to list
+
+
 @socketio.on('signal_frame_update')
 def handle_signal_frame_data_update(data):
     global config
@@ -578,19 +597,36 @@ def handle_signal_frame_data_update(data):
 
     # Only process incoming data if streaming is active
     if streaming_active:
+        # Data for the raw data signal plot
         signal_points.extend(data['data']['frame'])
         signal_point_times.extend(data['data']['frame_time'])
         frame_len = len(data['data']['frame'])
 
+        # Reordered the server-side list to ensure correct order of data, based on the
+        # streamed time stamps.
+        # Necessary as sometimes the socketio client messages arrive in te wrong order.
+        signal_point_times, signal_points = reorder_streamed_data(
+            signal_point_times,
+            signal_points
+        )
+
+        # Data for the RMS amplitude plot
         rms_amplitudes.append(data['data']['rms_amplitude'])
         rms_amplitude_times.append(data['data']['rms_sample_time'])
 
+        # Data for the live frequency plot and spectrogram plot
         signal_frequency_magnitude = data['data']['frequency_magnitude']
         freq_data_min_max = data['data']['frequency_magnitude_freq_min_max']
 
         fs = np.linspace(freq_data_min_max[0], freq_data_min_max[1], config.freq_plot_bins)
         all_frequencies.append(list(fs))
         all_magnitudes.append(signal_frequency_magnitude["y"])
+
+        # Reordered the server-side list to ensure correct order of data
+        rms_amplitude_times, rms_amplitudes, all_frequencies, all_magnitudes = reorder_streamed_data(
+            rms_amplitude_times,
+            rms_amplitudes, all_frequencies, all_magnitudes
+        )
 
         # Keep only the latest points
         if len(signal_points) > max_frame_points:

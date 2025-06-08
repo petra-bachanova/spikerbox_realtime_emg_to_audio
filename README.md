@@ -14,9 +14,11 @@ This repository contains Python scripts for reading and processing data from a S
 
 2. **Run the script**: Execute `spikerbox_realtime_analysis_and_audio`. There are two modes: `record_participant_baseline = True` outputs participant's frequency range, if set to False, it plays the processed EMG signal.
 
-### Dependencies
-Tested using Python 3.9.\
-Install dependencies from requirements.txt
+### Installation
+Using venv and pip:
+1. Create a virtual environment e.g. `python -m venv .venv`
+2. Activate the environment e.g. `.venv\Scripts\activate`
+3. Install the project and it's dependencies. From the project root: `pip install -e .`
 
 ---
 This project is built upon the core code from [SpikerStream Python repository](https://github.com/PHYS3888/SpikerStream/tree/master/SpikerStream_Python)

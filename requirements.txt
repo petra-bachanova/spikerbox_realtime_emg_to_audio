@@ -3,3 +3,14 @@ scipy
 matplotlib
 pyserial
 musicpy
+
+pandas
+dash
+flask-socketio
+eventlet
+dash-extensions
+plotly
+python-socketio
+dash-daq
+websocket-client
+dash-bootstrap-components

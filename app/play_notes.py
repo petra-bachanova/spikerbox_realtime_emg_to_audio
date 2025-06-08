@@ -32,7 +32,7 @@ def play_notes(
     """
     From a given RMS amplitude, play a note.
 
-    Calculation of the note to play is handled here as well as the play audio instruction to the system. 
+    Calculation of the note to play is handled here as well as the play audio instruction to the system.
     """
 
     # Extract min and max RMS values, between which we will play notes

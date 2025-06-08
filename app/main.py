@@ -2,9 +2,7 @@ import numpy as np
 import socketio
 import pandas as pd
 import time
-from scipy.io import wavfile
 from serial.serialutil import SerialException
-import os
 
 from app.utils.config import Config
 import app.play_notes as play_notes
@@ -15,30 +13,70 @@ import app.utils.save_data as save_data
 import app.utils.com_port_validation as com_port_validation
 
 
-global calibrate_mode
-calibrate_mode = False
+def handle_hop_data_received_messaging(
+        hop_data_received: bool,
+        backend_client_running: bool,
+        sio: socketio.Client | None,
+        last_data_available_bool: bool,
+        ) -> bool:
+    """
+    TODO - docstring
+    """
 
-global save_data_flag
-save_data_flag = False
+    if not hop_data_received:
+        # No hop data has been received
+        if not backend_client_running:
+            print("No data from Spikerbox")
+        else:
+            # Check if data availability has changed from last loop. If yes - send message to front end
+            if last_data_available_bool:
+                sio.emit('data_available_message', {"data": "False"})
+                last_data_available_bool = False
+    else:
+        # Hop data has been received
+        if backend_client_running and not last_data_available_bool:
+            # Update front end data availibility flag, and update last_data_available_bool
+            sio.emit('data_available_message', {"data": "True"})
+            last_data_available_bool = True
+
+
+def sleep_for_loop_interval(config: Config, start_loop_time: float):
+    """
+    Sleep to achieve the desired total loop duration, taking into account the loop's processing time
+
+    Args:
+        config (Config): Configuration object containing desired loop duration
+        start_loop_time (float): start time for the loop, used to calculate sleep duration
+    """
+
+    end_loop_time = time.perf_counter()
+    loop_time = end_loop_time - start_loop_time
+
+    # sleep for additional data, take into account loop processing time
+    if loop_time < config.update_interval:
+        # print(f"Sleeping for {config.update_interval - loop_time:.4f} seconds")
+        time.sleep(config.update_interval - loop_time)
 
 
 def end_of_file_handler(
     save_data_flag: bool,
-    data_record: list
 ):
+    global data_record
+    global sample_rate
+
     if save_data_flag:
-        save_data.save_data(
-            id="test",
-            data_record=data_record
-            )
-        save_data_to_file(
+        save_data.save_data_to_file(
+            signal_recording=data_record,
+            sample_rate=sample_rate,
             metadata={
                 "file_name": "test",
                 }
             )
+        # Empty the data_record ready for next recording
+        data_record = []
 
 
-def get_signal_hop_data(
+def get_hop_data(
         config: Config,
         i: int,
         stft_hop_length: int,
@@ -58,6 +96,7 @@ def get_signal_hop_data(
         serial_bytes = nsp_reader.read_raw_nsp_data()
         hop_data = nsp_reader.process_data(serial_bytes)
     else:
+        # extract data from local wav file
         try:
             hop_data = wav_data_reader.extract_window(
                 wav_signal=wav_signal,
@@ -155,76 +194,73 @@ def update_save_data_flag(flag: bool):
 
 
 def update_global_min_max_rms_for_audio(min_max_rms: list[int]):
-    
     global rms_to_audio_range
     rms_to_audio_range = min_max_rms
 
 
-def save_data_to_file(metadata: dict):
+def register_sio_events(sio: socketio.Client):
+    """
+    Register socketio listeners if sio is not None (the front end is in use).
+    """
     global data_record
     global sample_rate
 
-    f_name = f"recordings/{metadata["file_name"]}.wav"
-    metadata_fname = "recordings/metadata.csv"
-
-    # Write to a wav file
-    np_data = np.array(data_record, dtype=np.int16)
-    wavfile.write(f_name, sample_rate, np_data)
-
-    # Save the metadata to recordings/metadata.csv
-    # New row as a dictionary
-    new_row = metadata
-
-    # Convert new_row to a DataFrame
-    new_df = pd.DataFrame([new_row])
-
-    # If file exists, read it and append new row
-    if os.path.isfile(metadata_fname):
-        existing_df = pd.read_csv(metadata_fname)
-        combined_df = pd.concat([existing_df, new_df], ignore_index=True)
-    else:
-        combined_df = new_df
-
-    # Save to CSV (overwrites if file exists)
-    combined_df.to_csv(metadata_fname, index=False)
-
-    # Empty the data_record ready for next recording
-    data_record = []
-
-
-def register_sio_events(sio: socketio.Client):
-    """
-    Register socketio save_data event if sio is not None.
-    """
-    if sio is not None:
+    if sio is not None:  # Skip if socketio client backend / front end is not in use
         @sio.on('save_data')
         def handle_save_data_event(flag: bool):
             update_save_data_flag(flag)
 
         @sio.on("complete_save_data")
         def handle_complete_save_data_event(metadata: dict):
-            save_data_to_file(metadata=metadata)
+            save_data.save_data_to_file(
+                signal_recording=data_record,
+                sample_rate=sample_rate,
+                metadata=metadata
+                )
 
         @sio.on("min-max-rms-audio-update")
         def handle_update_min_max_rms_audio_event(min_max_rms: list[int]):
             update_global_min_max_rms_for_audio(min_max_rms=min_max_rms)
 
 
+def print_terminal_intro_text():
+    with open("app/utils/terminal_intro.txt", "r") as f:
+        intro_text = f.read()
+    print(intro_text)
+    time.sleep(1)
+
+
 def main(
         config: Config,
-        from_backend: bool = False,
+        backend_client_running: bool = False,
         sio: socketio.Client | None = None
         ):
     """
-    TODO - docstring
+    Runs the main data processing loop, including data reading, signal processing, and audio output.
+
+    Args:
+        config (Config): Configuration object containing initial settings.
+        backend_client_running (bool): If True, indicates the backend client is already running
+            (e.g. in full app mode with frontend). If False, runs standalone for testing or debugging.
+        sio (socketio.Client | None): Socket.IO client for communicating with the frontend.
+            Should be None if backend_client_running is False.
+
+    Returns:
+        None
     """
+
+    print_terminal_intro_text()
+
+    # Set up global variables - these are typically global as they are used by socketio funcitons
+    # for inputs in the front end to update variables on a 'live' basis in the main() while True loop.
 
     global save_data_flag
     save_data_flag = config.save_recording
 
-    global calibrate_mode
-
+    # initialise list for data recording
     global data_record
+    data_record = []
+
     global sample_rate
 
     global rms_to_audio_range
@@ -233,18 +269,18 @@ def main(
     register_sio_events(sio=sio)
 
     if not config.use_live_data:
-        sample_rate, wav_signal = wav_data_reader.read_wav_file(config)
+        # Read local wav file upfront
+        sample_rate, wav_data = wav_data_reader.read_wav_file(config)
     else:
+        # Validate and set up Spikerbox serial port connection
         sample_rate = config.sample_rate
-        wav_signal = None
-        com_port = config.com_port
-        baud_rate = config.baud_rate
+        wav_data = None
         try:
-            nsp_reader.initialize_serial(com_port=com_port, baud_rate=baud_rate)
+            nsp_reader.initialize_serial(config=config)
         except SerialException as e:
+            # Validate - send front end message or raise Exception
             com_ports = com_port_validation.find_com_ports()
             if sio:
-                # TODO - send message to front end
                 sio.emit('invalid_com_port', {"valid_com_ports": com_ports})
                 # TODO - force backend to hang?
                 raise Exception(f"{e}\nAvailable COM ports: {com_ports}")
@@ -257,97 +293,83 @@ def main(
     stft_hop_length = int(sample_rate * config.update_interval)  # samples
     stft_frame_length = 2 * stft_hop_length  # samples
 
-    i = 0  # initialise loop iteration
-
     start_time = time.perf_counter()
     start_loop_time = time.perf_counter()
 
-    # filters
+    # create list of notch frequencies we will apply within loop
     notch_frequencies = [config.grid_frequency * i for i in range(1, 8)]
 
-    # data recording
-    data_record = []
+    # determine the max recording samples we will hold before beginning to overwrite recorded data
     max_recording_len = sample_rate * config.max_recording_time
 
+    # boolean flag, used to determine when to send "end of file" message to front end
     last_data_available_bool = False
 
-    frame = []
+    stft_frame = []  # initialise empty frame
+    i = 0  # initialise frame counter. Represents how many frames have been processed since the beginning of the loop
 
+    # loop - read and process data, while handling updates from front end, and playing notes
     while True:
         # print(f"Time since last loop = {time.perf_counter() - start_loop_time:.4f} seconds")
         start_loop_time = time.perf_counter()
 
-        if i < stft_frame_length:
-            # wait until we have enough samples for stft
-            i += stft_hop_length
-            continue
-
         # get latest data from NSP, or the next batch of wav file data
-        hop_data, end_of_data = get_signal_hop_data(
+        hop_data, end_of_data = get_hop_data(
             config=config,
             i=i,
             stft_hop_length=stft_hop_length,
-            wav_signal=wav_signal,
+            wav_signal=wav_data,
             )
 
         if end_of_data:
             # save data and exit
             end_of_file_handler(
                 save_data_flag=save_data_flag,
-                data_record=data_record,
             )
             save_data_flag = False
 
+        # Handle no data received
         if hop_data is None or hop_data.size == 0:
-            if not from_backend:
-                print("Frame is empty")
-            if sio:
-                if last_data_available_bool:
-                    # Check if data availability has changed from last loop
-                    sio.emit('data_available_message', {"data": "False"})
-                    last_data_available_bool = False
-            end_loop_time = time.perf_counter()
-            loop_time = end_loop_time - start_loop_time
-            # sleep for additional data, take into account loop processing time
-            if loop_time < config.update_interval:
-                # print(f"Sleeping for {config.update_interval - loop_time:.4f} seconds")
-                time.sleep(config.update_interval - loop_time)
+            handle_hop_data_received_messaging(
+                hop_data_received=False,
+                backend_client_running=backend_client_running,
+                sio=sio,
+                last_data_available_bool=last_data_available_bool
+            )
+            # sleep until loop duration is reached, and iterate loop
+            sleep_for_loop_interval(config=config, start_loop_time=start_loop_time)
             i += stft_hop_length
             continue
         else:
-            if sio:
-                if not last_data_available_bool:
-                    # Check if data availability has changed from last loop
-                    sio.emit('data_available_message', {"data": "True"})
-                    last_data_available_bool = True
+            handle_hop_data_received_messaging(
+                hop_data_received=True,
+                backend_client_running=backend_client_running,
+                sio=sio,
+                last_data_available_bool=last_data_available_bool
+            )
 
-        # from the new data (hop_data), create the frame of stft_frame_length
-        # which will be used for FFT processing
-        if len(frame) >= stft_frame_length:
-            # the first half of the frame is discarded,
-            # the second half is retained for the next iteration
-            frame = frame[stft_hop_length:]
-        # latest hop data appended to end of the frame
-        frame.extend(hop_data)
+        # from the latest data (hop_data), create the frame of stft_frame_length used for FFT processing
+        if len(stft_frame) >= stft_frame_length:
+            # discrard first half of frame, promote second half to what will become the first half (after .extend())
+            stft_frame = stft_frame[stft_hop_length:]
+        stft_frame.extend(hop_data)  # latest hop data appended to end of the frame
 
-        if len(frame) < stft_frame_length:
+        if len(stft_frame) < stft_frame_length:
             # wait until we have enough samples for stft
+            sleep_for_loop_interval(config=config, start_loop_time=start_loop_time)
             i += stft_hop_length
             continue
 
-        # Check for front end signal to record data
-        # TODO - handle diff between frame and stft frame
-        # TODO - move to save_data.py
+        # update data_record if we are in save data mode
         if save_data_flag:
             if len(data_record) > max_recording_len:
-                # only record last X seconds;
-                # overwrite the first frame with the current frame
+                # Overwrite the first frame with the current frame
                 data_record = data_record[len(hop_data):]
             data_record.extend(hop_data)
 
         # Notch and bandpass filtering
         filtered_frame = process_data.apply_grid_noise_notch_filters(
-            signal_in=frame,
+            signal_in=stft_frame,
             notch_frequencies=notch_frequencies
             )
 
@@ -358,62 +380,43 @@ def main(
             upper_bandpass_freq=config.bandpass_max
             )
 
+        # Apply STFT
         signal_frequency_content = process_data.apply_stft(
             signal=filtered_frame,
             sample_rate=sample_rate,
             )
 
-        # Get power within the band pass filter
+        # Get RMS amplitude
         rms_amplitude = np.sqrt(np.mean(filtered_frame**2))
         # print(rms_amplitude)
 
-        if not calibrate_mode:
-            play_notes.play_notes(
-                config=config,
-                rms_amplitude=rms_amplitude,
-                rms_to_audio_range=rms_to_audio_range
-            )
+        play_notes.play_notes(
+            config=config,
+            rms_amplitude=rms_amplitude,
+            rms_to_audio_range=rms_to_audio_range
+        )
 
-        # emit data if running via backend server
-        if from_backend:
+        # emit latest data to front end
+        if backend_client_running:
             emit_data(
                 config=config,
                 sio=sio,
-                frame_data=frame,
+                frame_data=stft_frame,
                 sample_rate=sample_rate,
                 rms_amplitude=rms_amplitude,
                 signal_frequency_content=signal_frequency_content,
                 start_time=start_time
                 )
 
-        end_loop_time = time.perf_counter()
-        loop_time = end_loop_time - start_loop_time
-
-        # sleep for additional data, take into account loop processing time
-        if loop_time < config.update_interval:
-            # print(f"Sleeping for {config.update_interval - loop_time:.4f} seconds")
-            time.sleep(config.update_interval - loop_time)
-
+        sleep_for_loop_interval(config=config, start_loop_time=start_loop_time)
         i += stft_hop_length
 
 
-def print_intro_text():
-    with open("app/utils/terminal_intro.txt", "r") as f:
-        intro_text = f.read()
-
-    print(intro_text)
-    time.sleep(1)
-
-
 def start_main_from_backend(sio: socketio.Client):
-
     config = Config()
-    print_intro_text()
-    main(config=config, from_backend=True, sio=sio)
+    main(config=config, backend_client_running=True, sio=sio)
 
 
 if __name__ == "__main__":
-
     config = Config()
-    print_intro_text()
     main(config=config)

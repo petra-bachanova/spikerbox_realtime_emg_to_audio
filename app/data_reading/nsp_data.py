@@ -5,13 +5,13 @@ from app.utils.config import Config
 ser = None
 
 
-def initialize_serial(com_port: str, baud_rate: int):
+def initialize_serial(config: Config):
     """
     Initializes the serial connection to the SpikerBox device.
     """
     global ser
     if ser is None or not ser.is_open:
-        ser = serial.Serial(com_port, int(baud_rate))
+        ser = serial.Serial(config.com_port, int(config.baud_rate))
         # timeout == 0 for Non-blocking mode
         # ser.read() will return immediately with whatever data is available
         ser.timeout = 0

@@ -2,9 +2,7 @@ import numpy as np
 import socketio
 import pandas as pd
 import time
-from scipy.io import wavfile
 from serial.serialutil import SerialException
-import os
 
 from app.utils.config import Config
 import app.play_notes as play_notes
@@ -62,18 +60,20 @@ def sleep_for_loop_interval(config: Config, start_loop_time: float):
 
 def end_of_file_handler(
     save_data_flag: bool,
-    data_record: list
 ):
+    global data_record
+    global sample_rate
+
     if save_data_flag:
-        save_data.save_data(
-            id="test",
-            data_record=data_record
-            )
-        save_data_to_file(
+        save_data.save_data_to_file(
+            signal_recording=data_record,
+            sample_rate=sample_rate,
             metadata={
                 "file_name": "test",
                 }
             )
+        # Empty the data_record ready for next recording
+        data_record = []
 
 
 def get_hop_data(
@@ -198,42 +198,13 @@ def update_global_min_max_rms_for_audio(min_max_rms: list[int]):
     rms_to_audio_range = min_max_rms
 
 
-def save_data_to_file(metadata: dict):
-    global data_record
-    global sample_rate
-
-    f_name = f"recordings/{metadata["file_name"]}.wav"
-    metadata_fname = "recordings/metadata.csv"
-
-    # Write to a wav file
-    np_data = np.array(data_record, dtype=np.int16)
-    wavfile.write(f_name, sample_rate, np_data)
-
-    # Save the metadata to recordings/metadata.csv
-    # New row as a dictionary
-    new_row = metadata
-
-    # Convert new_row to a DataFrame
-    new_df = pd.DataFrame([new_row])
-
-    # If file exists, read it and append new row
-    if os.path.isfile(metadata_fname):
-        existing_df = pd.read_csv(metadata_fname)
-        combined_df = pd.concat([existing_df, new_df], ignore_index=True)
-    else:
-        combined_df = new_df
-
-    # Save to CSV (overwrites if file exists)
-    combined_df.to_csv(metadata_fname, index=False)
-
-    # Empty the data_record ready for next recording
-    data_record = []
-
-
 def register_sio_events(sio: socketio.Client):
     """
     Register socketio listeners if sio is not None (the front end is in use).
     """
+    global data_record
+    global sample_rate
+
     if sio is not None:  # Skip if socketio client backend / front end is not in use
         @sio.on('save_data')
         def handle_save_data_event(flag: bool):
@@ -241,7 +212,11 @@ def register_sio_events(sio: socketio.Client):
 
         @sio.on("complete_save_data")
         def handle_complete_save_data_event(metadata: dict):
-            save_data_to_file(metadata=metadata)
+            save_data.save_data_to_file(
+                signal_recording=data_record,
+                sample_rate=sample_rate,
+                metadata=metadata
+                )
 
         @sio.on("min-max-rms-audio-update")
         def handle_update_min_max_rms_audio_event(min_max_rms: list[int]):
@@ -350,7 +325,6 @@ def main(
             # save data and exit
             end_of_file_handler(
                 save_data_flag=save_data_flag,
-                data_record=data_record,
             )
             save_data_flag = False
 

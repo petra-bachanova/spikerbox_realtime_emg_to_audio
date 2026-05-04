@@ -19,6 +19,21 @@ class Config():
         # initial range (lower->upper) of RMS values, between which notes will be played
         self.init_lower_rms_audio_val = config.getint("DEFAULT", "init_lower_rms_audio_val")
         self.init_upper_rms_audio_val = config.getint("DEFAULT", "init_upper_rms_audio_val")
+        self.audio_min_emit_period_seconds = config.getfloat(
+            "DEFAULT",
+            "audio_min_emit_period_seconds",
+            fallback=0.4,
+        )
+        self.audio_note_duration_seconds = config.getfloat(
+            "DEFAULT",
+            "audio_note_duration_seconds",
+            fallback=0.45,
+        )
+        self.audio_pitch_change_threshold_semitones = config.getint(
+            "DEFAULT",
+            "audio_pitch_change_threshold_semitones",
+            fallback=0,
+        )
 
         self.com_port = config.get("NSP", "com_port")
         self.baud_rate = config.getint("NSP", "baud_rate")

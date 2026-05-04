@@ -73,6 +73,7 @@ def sleep_for_loop_interval(config: Config, start_loop_time: float):
 def end_of_file_handler(
     save_data_flag: bool,
 ):
+    """Persist recorded data at end-of-file when saving is enabled."""
     global data_record
     global sample_rate
 
@@ -131,6 +132,7 @@ def emit_data(
         signal_frequency_content: dict[str, list[float]],
         start_time
         ):
+    """Prepare and emit plotting/audio metrics to the frontend."""
 
     time_elapsed = time.perf_counter() - start_time
 
@@ -197,6 +199,7 @@ def emit_data(
 
 # Define the event handler function
 def update_save_data_flag(flag: bool):
+    """Update global recording toggle from socket payload."""
     global save_data_flag
 
     if flag["active"]:
@@ -206,6 +209,7 @@ def update_save_data_flag(flag: bool):
 
 
 def update_global_min_max_rms_for_audio(min_max_rms: list[int]):
+    """Store frontend-provided RMS bounds used for note mapping."""
     global rms_to_audio_range
     rms_to_audio_range = min_max_rms
 
@@ -220,10 +224,12 @@ def register_sio_events(sio: socketio.Client):
     if sio is not None:  # Skip if socketio client backend / front end is not in use
         @sio.on('save_data')
         def handle_save_data_event(flag: bool):
+            """Handle recording enable/disable messages from frontend."""
             update_save_data_flag(flag)
 
         @sio.on("complete_save_data")
         def handle_complete_save_data_event(metadata: dict):
+            """Persist currently buffered recording with submitted metadata."""
             save_data.save_data_to_file(
                 signal_recording=data_record,
                 sample_rate=sample_rate,
@@ -232,10 +238,12 @@ def register_sio_events(sio: socketio.Client):
 
         @sio.on("min-max-rms-audio-update")
         def handle_update_min_max_rms_audio_event(min_max_rms: list[int]):
+            """Update RMS thresholds used for realtime audio note mapping."""
             update_global_min_max_rms_for_audio(min_max_rms=min_max_rms)
 
 
 def print_terminal_intro_text():
+    """Print startup banner text in the backend terminal."""
     with open("app/utils/terminal_intro.txt", "r") as f:
         intro_text = f.read()
     print(intro_text)
@@ -456,6 +464,7 @@ def main(
 
 
 def start_main_from_backend(sio: socketio.Client):
+    """Entry point used by the frontend streaming client process."""
     config = Config()
     main(config=config, backend_client_running=True, sio=sio)
 

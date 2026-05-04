@@ -22,6 +22,7 @@ class NotePlaybackWorker:
             expected_interval_seconds: float | None = None,
             stats_window_size: int = 25,
             ):
+        """Initialize playback queue, timing knobs, and worker state."""
         self._queue: queue.Queue = queue.Queue(maxsize=queue_size)
         self._queue_timeout_seconds = queue_timeout_seconds
         self._expected_interval_seconds = expected_interval_seconds
@@ -30,6 +31,7 @@ class NotePlaybackWorker:
         self._play_durations_seconds = deque(maxlen=stats_window_size)
 
     def start(self):
+        """Start the background playback thread if not already running."""
         if self._thread is not None and self._thread.is_alive():
             return
         self._stop_event.clear()
@@ -59,11 +61,13 @@ class NotePlaybackWorker:
                 return
 
     def stop(self, join_timeout_seconds: float = 2.0):
+        """Signal playback shutdown and wait briefly for thread exit."""
         self._stop_event.set()
         if self._thread is not None:
             self._thread.join(timeout=join_timeout_seconds)
 
     def _run(self):
+        """Consume queued notes and play them serially until drained."""
         while not self._stop_event.is_set() or not self._queue.empty():
             try:
                 note_obj = self._queue.get(timeout=self._queue_timeout_seconds)

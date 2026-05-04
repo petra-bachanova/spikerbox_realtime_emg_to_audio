@@ -7,6 +7,7 @@ class Config():
     """
 
     def __init__(self):
+        """Load runtime settings from config.ini into typed attributes."""
 
         config = configparser.ConfigParser()
         config.read("config.ini")

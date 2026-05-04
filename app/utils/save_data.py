@@ -6,6 +6,7 @@ from scipy.io import wavfile
 
 
 def save_data_to_file(signal_recording: list, sample_rate: int, metadata: dict):
+    """Write recording samples to WAV and append metadata CSV row."""
 
     if not os.path.exists("recordings"):
         os.mkdir("recordings")

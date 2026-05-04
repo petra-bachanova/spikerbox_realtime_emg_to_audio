@@ -16,6 +16,7 @@ start_time_client = None
 # Connect to the frontend
 @sio.event
 def connect():
+    """Handle a successful frontend Socket.IO connection."""
     global connected, start_time_client
     print("Backend connected to frontend server!")
     connected = True
@@ -28,6 +29,7 @@ def connect():
 
 @sio.event
 def disconnect():
+    """Handle frontend Socket.IO disconnection events."""
     global connected
     print("Backend disconnected from frontend server")
     sio.emit('backend_connected', {'status': 'False'})
@@ -36,6 +38,7 @@ def disconnect():
 
 @sio.event
 def streaming_state(data):
+    """Update local streaming flag from frontend state messages."""
     global streaming_enabled
     streaming_enabled = data.get('active', True)
     state_text = "enabled" if streaming_enabled else "disabled"
@@ -43,6 +46,7 @@ def streaming_state(data):
 
 
 def send_data():
+    """Continuously stream backend data while connected and enabled."""
     global connected, streaming_enabled
 
     while connected:

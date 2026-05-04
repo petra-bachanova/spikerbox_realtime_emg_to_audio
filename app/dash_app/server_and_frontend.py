@@ -64,6 +64,7 @@ modal_filename_div = html.Div(
     Input("input-filename", "value"),
 )
 def validate_file_name_input(value):
+    """Validate recording filename input and button enablement state."""
     # TODO - check if filename already exists
     if value is None or "." in value or value == "":
         return False, True, True  # Show invalid feedback and disable save button
@@ -413,6 +414,7 @@ app.layout = html.Div([
     prevent_initial_call=True
 )
 def apply_rms_thresholds(n_clicks, min_val, max_val):
+    """Clamp RMS thresholds, persist them, and notify the backend."""
 
     global min_rms_amplitude_input
     global max_rms_amplitude_input
@@ -440,6 +442,7 @@ def apply_rms_thresholds(n_clicks, min_val, max_val):
     Input('data-available-checker', 'n_intervals')
 )
 def update_data_available_status(n):
+    """Expose latest backend data-availability status to Dash store."""
     global data_available_status
     # Return the current value of data_available_status
     return data_available_status
@@ -450,6 +453,7 @@ def update_data_available_status(n):
     Input('backend-connection-checker', 'n_intervals')
 )
 def update_backend_connection_status(n):
+    """Expose backend connection status to Dash store."""
     global back_end_is_connected
     # Return the current value of back_end_is_connected
     return back_end_is_connected
@@ -462,6 +466,7 @@ def update_backend_connection_status(n):
      Input("data-available-status", "data")]
 )
 def update_status_card(connected, data_available):
+    """Render status card text/color from backend and data states."""
     # Handle None values that might occur during initialization
     if connected is None:
         connected = False
@@ -491,6 +496,7 @@ def update_status_card(connected, data_available):
     [Input('stop-recording-modal', 'is_open')]
 )
 def toggle_interval(modal_is_open):
+    """Pause frame-update interval while save modal is open."""
     # Disable interval updates when modal is open
     return modal_is_open
 
@@ -509,6 +515,7 @@ def toggle_interval(modal_is_open):
      State("stop-recording-modal", "is_open"),]
 )
 def handle_modal(stop_clicks, save_clicks, cancel_clicks, file_name, age_range, save_comments, is_open):
+    """Open, close, and submit the stop-recording modal workflow."""
     ctx = dash.callback_context
     global save_timestamp
 
@@ -552,6 +559,7 @@ def handle_modal(stop_clicks, save_clicks, cancel_clicks, file_name, age_range, 
 # TODO - is this used?
 @socketio.on('connect')
 def handle_connect():
+    """Handle Socket.IO client connection to the Flask server."""
     print('Client connected to server')
     # Tell the client the current streaming state
     socketio.emit('streaming_state', {'active': streaming_active})
@@ -559,6 +567,7 @@ def handle_connect():
 
 @socketio.on('disconnect')
 def handle_disconnect():
+    """Handle Socket.IO client disconnect from the Flask server."""
     print('Client disconnected from server')
 
 
@@ -583,6 +592,7 @@ def reorder_streamed_data(
 
 @socketio.on('signal_frame_update')
 def handle_signal_frame_data_update(data):
+    """Ingest streamed signal payloads and maintain plotting buffers."""
     global config
 
     global signal_points
@@ -648,12 +658,14 @@ def handle_signal_frame_data_update(data):
 
 @socketio.on('invalid_com_port')
 def update_valid_com_ports_list(data):
+    """Store valid COM ports provided by backend validation event."""
     global valid_com_ports_list
     valid_com_ports_list = data.get("valid_com_ports", [])
 
 
 @socketio.on('data_available_message')
 def update_data_available_status(data):
+    """Update global data-availability flag from backend event payload."""
     global data_available_status
     data_available_status_str = data.get('data', "False")
     if data_available_status_str == "True":
@@ -664,6 +676,7 @@ def update_data_available_status(data):
 
 @socketio.on('backend_connected')
 def update_connection_status(data):
+    """Update backend-connected flag from socket status event."""
     global back_end_is_connected
     back_end_is_connected_str = data.get('status', "False")
     if back_end_is_connected_str == "True":
@@ -674,6 +687,7 @@ def update_connection_status(data):
 
 @socketio.on('request_streaming_state')
 def send_streaming_state():
+    """Respond with current streaming state when backend requests it."""
     socketio.emit('streaming_state', {'active': streaming_active})
 
 
@@ -686,6 +700,7 @@ def send_streaming_state():
     Input('stop-record-data-button', 'n_clicks')
 )
 def handle_recording_buttons(start_clicks, stop_clicks):
+    """Toggle recording mode and button states from user actions."""
     # Determine which button was clicked
     ctx = dash.callback_context
 
@@ -774,6 +789,7 @@ def handle_recording_buttons(start_clicks, stop_clicks):
     [Input('clear-graphs-button', 'n_clicks')]
 )
 def clear_graphs_and_data(n_clicks):
+    """Clear buffered plot data used by all live visualizations."""
     # global streaming_active
     global signal_points
     global signal_point_times
@@ -800,6 +816,7 @@ def clear_graphs_and_data(n_clicks):
     [State('stream-state', 'children')]
 )
 def toggle_stream(n_clicks, stream_state):
+    """Toggle stream activity and update stream button UI state."""
     global streaming_active
 
     if n_clicks is None:
@@ -843,6 +860,7 @@ def toggle_stream(n_clicks, stream_state):
 
 
 def get_max_magnitude():
+    """Compute current maximum magnitude for frequency-plot scaling."""
     global all_magnitudes
     global max_magnitude
     max_magnitude = max([max(i) for i in all_magnitudes])
@@ -853,6 +871,7 @@ def get_max_magnitude():
     [Input('frame-update', 'n_intervals')]
 )
 def update_freq_magnitude_plot(n):
+    """Build the live frequency-magnitude line chart figure."""
     global config
     global signal_frequency_magnitude
     global freq_data_min_max
@@ -889,6 +908,7 @@ def update_freq_magnitude_plot(n):
     [Input('frame-update', 'n_intervals')],
 )
 def update_frame_plot(n):
+    """Build the raw signal, RMS, and spectrogram stacked figure."""
     global signal_points
     global signal_point_times
     global rms_amplitudes

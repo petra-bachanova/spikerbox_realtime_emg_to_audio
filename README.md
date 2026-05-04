@@ -19,8 +19,8 @@ Demo SpikerBox data is included, enabling testing of the app without a SpikerBox
 2. (Optional) **Connect the SpikerBox**: Connect via USB. Update `config.ini` with the COM port used. For Mac, use: `ls /dev/tty.usb*` to help identify the COM port. If no SpikerBox is connected, the COM port setting is ignored by the code.
 
 3. **Activete python environment and run**:
-- `python app/main.py` for the bare data reading, processing and audio production.
-- `python app/dash_app/start_app.py` will start a Socket.IO server and dash app frontend, in addition to the above script. Access the frontend via `http://localhost:8501/`.
+- `python -m app.main` for the bare data reading, processing and audio production.
+- `python -m app.dash_app.start_app` will start a Socket.IO server and dash app frontend, in addition to the above script. Access the frontend via `http://localhost:8501/`.
 
 ### Installation
 Using venv and pip:
